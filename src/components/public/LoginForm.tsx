@@ -10,7 +10,7 @@ import { useAuth } from "@/components/layout/AuthProvider";
 import { useRedirectIfLoggedIn } from "@/components/layout/useRedirectIfLoggedIn";
 import { FormField } from "@/components/shared/FormField";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { ROLE_HOME } from "@/constants/navigation";
@@ -53,7 +53,7 @@ export function LoginForm() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-xl">Log in</CardTitle>
+        <h1 className="text-xl font-semibold leading-snug">Log in</h1>
         <CardDescription>Enter your email and password, or use a demo account.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">

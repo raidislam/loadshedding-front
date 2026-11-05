@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -77,7 +78,10 @@ export function Header({ user, onMenuClick }: HeaderProps) {
             </span>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuLabel>{user.email}</DropdownMenuLabel>
+            {/* GroupLabel must live inside a Group (a Base UI rule) */}
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>{user.email}</DropdownMenuLabel>
+            </DropdownMenuGroup>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => router.push(profileHref)}>
               <UserIcon /> {user.role === "ADMIN" ? "Settings" : "My profile"}

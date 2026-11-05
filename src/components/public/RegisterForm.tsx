@@ -9,7 +9,7 @@ import { useAuth } from "@/components/layout/AuthProvider";
 import { useRedirectIfLoggedIn } from "@/components/layout/useRedirectIfLoggedIn";
 import { FormField } from "@/components/shared/FormField";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ROLE_HOME } from "@/constants/navigation";
@@ -57,7 +57,7 @@ export function RegisterForm() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-xl">Create a customer account</CardTitle>
+        <h1 className="text-xl font-semibold leading-snug">Create a customer account</h1>
         <CardDescription>Customers can check power status and report outages.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
