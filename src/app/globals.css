@@ -105,3 +105,153 @@
     @apply font-sans;
   }
 }
+/* ---- Home page power-grid animation ---- */
+.pg-flow {
+  stroke-dasharray: 6 18;
+  animation: pg-dash 1.2s linear infinite;
+}
+.pg-flow-slow {
+  animation-duration: 1.8s;
+}
+@keyframes pg-dash {
+  to {
+    stroke-dashoffset: -24;
+  }
+}
+
+.pg-star {
+  animation: pg-twinkle 3s ease-in-out infinite;
+}
+@keyframes pg-twinkle {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 1; }
+}
+
+.pg-steam {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: pg-steam 3.6s ease-out infinite;
+  opacity: 0;
+}
+@keyframes pg-steam {
+  0% { transform: translateY(0) scale(0.6); opacity: 0.7; }
+  100% { transform: translateY(-70px) scale(2.2); opacity: 0; }
+}
+
+.pg-bolt {
+  animation: pg-bolt 1.6s ease-in-out infinite;
+}
+@keyframes pg-bolt {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+.pg-window {
+  fill: #ffd166;
+  animation: pg-window 4s ease-in-out infinite;
+}
+@keyframes pg-window {
+  0%, 8% { fill: #1b2c57; }
+  14%, 100% { fill: #ffd166; }
+}
+
+/* Dashed "current" line used between sections */
+.pg-line {
+  background-image: linear-gradient(90deg, var(--electric) 50%, transparent 50%);
+  background-size: 16px 2px;
+  background-repeat: repeat-x;
+  animation: pg-line 0.8s linear infinite;
+}
+@keyframes pg-line {
+  to { background-position: 16px 0; }
+}
+
+.hero-grid-bg {
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(255 255 255 / 0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .grid-anim *,
+  .pg-line {
+    animation: none !important;
+  }
+  .grid-anim .pg-pulse {
+    display: none;
+  }
+}
+
+/* ---- Home hero energy background ---- */
+.eb-trace {
+  stroke-dasharray: 40 260;
+  animation: eb-trace 3s linear infinite;
+}
+@keyframes eb-trace {
+  from { stroke-dashoffset: 300; }
+  to { stroke-dashoffset: 0; }
+}
+
+.eb-node {
+  animation: pg-twinkle 2s ease-in-out infinite;
+}
+
+.eb-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: eb-ring 4s ease-out infinite;
+  opacity: 0;
+}
+@keyframes eb-ring {
+  0% { transform: scale(0.3); opacity: 0.6; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+.eb-bolt {
+  opacity: 0;
+  animation-name: eb-bolt;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+@keyframes eb-bolt {
+  0%, 86% { opacity: 0; }
+  87% { opacity: 1; }
+  88% { opacity: 0.15; }
+  90% { opacity: 1; }
+  94%, 100% { opacity: 0; }
+}
+
+.eb-spark {
+  transform-box: fill-box;
+  opacity: 0;
+  animation-name: eb-spark;
+  animation-timing-function: ease-out;
+  animation-iteration-count: infinite;
+}
+@keyframes eb-spark {
+  0% { transform: translateY(0); opacity: 0; }
+  15% { opacity: 1; }
+  100% { transform: translateY(-420px); opacity: 0; }
+}
+
+.hero-grid-mask {
+  mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+}
+
+/* Fades the hero illustration's edges into the background */
+.hero-art-fade {
+  mask-image:
+    linear-gradient(to right, transparent 0%, black 14%, black 86%, transparent 100%),
+    linear-gradient(to bottom, transparent 0%, black 12%, black 96%, transparent 100%);
+  mask-composite: intersect;
+  -webkit-mask-composite: source-in;
+}
+
+/* Subtle navy grid for the footer on light pages */
+.footer-grid-light {
+  background-image:
+    linear-gradient(rgb(30 58 138 / 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(30 58 138 / 0.06) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
