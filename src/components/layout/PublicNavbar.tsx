@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -8,7 +8,7 @@ import { Menu } from "lucide-react";
 import { useAuth } from "@/components/layout/AuthProvider";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
-import { ROLE_HOME } from "@/constants/navigation";
+import { isDarkPublicRoute, ROLE_HOME } from "@/constants/navigation";
 import { cn } from "@/lib/utils";
 
 const LINKS = [
@@ -23,17 +23,26 @@ export function PublicNavbar() {
   const pathname = usePathname();
   const { user, ready } = useAuth();
   const [open, setOpen] = useState(false);
-  // The home page has a dark full-screen hero, so the navbar floats over it as a dark pill
-  const isHome = pathname === "/";
+  const [scrolled, setScrolled] = useState(false);
+  // Dark pages float the navbar over their content as a dark rounded pill
+  const isDark = isDarkPublicRoute(pathname);
+
+  // Once the page scrolls, the pill tightens up and becomes more solid
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 24);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   function linkClass(href: string, dark = false) {
     const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
     if (dark) {
       return cn(
-        "rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors",
+        "relative rounded-full px-3.5 py-1.5 text-sm font-medium transition-all duration-300",
         active
-          ? "bg-electric/20 text-white ring-1 ring-sky-400/40"
-          : "text-slate-300 hover:bg-white/5 hover:text-white",
+          ? "bg-linear-to-r from-electric/30 to-indigo-500/30 text-white shadow-[inset_0_0_0_1px_rgb(125_211_252/0.35)]"
+          : "text-slate-300 hover:bg-white/6 hover:text-white",
       );
     }
     return cn(
@@ -101,10 +110,17 @@ export function PublicNavbar() {
     </Sheet>
   );
 
-  if (isHome) {
+  if (isDark) {
     return (
       <header className="fixed inset-x-0 top-0 z-40 px-3 pt-3 sm:px-4 sm:pt-4">
-        <div className="relative mx-auto flex h-14 max-w-6xl items-center justify-between rounded-full border border-white/10 bg-[#050d24]/70 pr-2 pl-4 shadow-2xl shadow-black/40 backdrop-blur-xl sm:pl-5">
+        <div
+          className={cn(
+            "relative mx-auto flex items-center justify-between rounded-full border pr-2 pl-4 backdrop-blur-xl transition-all duration-500 sm:pl-5",
+            scrolled
+              ? "h-12 max-w-5xl border-sky-400/20 bg-[#030a1f]/90 shadow-2xl shadow-electric/20"
+              : "h-14 max-w-6xl border-white/10 bg-[#050d24]/60 shadow-2xl shadow-black/40",
+          )}
+        >
           {/* Thin glowing edge along the top of the pill */}
           <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-linear-to-r from-transparent via-sky-400/60 to-transparent" />
 

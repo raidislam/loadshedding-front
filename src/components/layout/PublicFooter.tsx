@@ -3,7 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowUpRight, CalendarClock, FilePlus, Info, Mail, MapPinned, Zap } from "lucide-react";
+import { ArrowUpRight, CalendarClock, FilePlus, Mail, MapPinned, Zap } from "lucide-react";
+import { isDarkPublicRoute } from "@/constants/navigation";
 import { cn } from "@/lib/utils";
 
 const QUICK_LINKS = [
@@ -21,7 +22,7 @@ const FOR_YOU = [
   { label: "Get in touch", href: "/contact", icon: Mail },
 ];
 
-// The home page is fully dark, the other public pages are light,
+// Dark public pages (see DARK_PUBLIC_ROUTES) get the dark footer, the rest are light,
 // so the footer follows whichever theme the page around it uses.
 const THEMES = {
   dark: {
@@ -37,11 +38,7 @@ const THEMES = {
     body: "text-slate-400",
     link: "text-slate-400 hover:text-sky-300",
     icon: "text-sky-400/80",
-    card: "border-white/10 bg-white/3",
-    notice: "text-amber-300",
     badge: "border-emerald-400/20 bg-emerald-400/10 text-emerald-300",
-    divider: "border-white/10",
-    bottom: "text-slate-500",
   },
   light: {
     footer: "border-t bg-card text-foreground",
@@ -56,17 +53,13 @@ const THEMES = {
     body: "text-muted-foreground",
     link: "text-muted-foreground hover:text-electric",
     icon: "text-electric",
-    card: "border-border bg-background/70",
-    notice: "text-amber-700",
     badge: "border-emerald-500/20 bg-emerald-500/10 text-emerald-700",
-    divider: "border-border",
-    bottom: "text-muted-foreground",
   },
 };
 
 export function PublicFooter() {
   const pathname = usePathname();
-  const t = pathname === "/" ? THEMES.dark : THEMES.light;
+  const t = isDarkPublicRoute(pathname) ? THEMES.dark : THEMES.light;
 
   return (
     <footer className={cn("relative mt-auto overflow-hidden", t.footer)}>
@@ -83,7 +76,7 @@ export function PublicFooter() {
         strokeWidth={1}
       />
 
-      <div className="relative mx-auto grid max-w-6xl gap-10 px-4 pt-16 pb-12 md:grid-cols-[1.4fr_1fr_1fr_1.3fr]">
+      <div className="relative mx-auto grid max-w-6xl gap-10 px-4 py-16 md:grid-cols-[2fr_1fr_1fr]">
         {/* Brand */}
         <div>
           <Link href="/" className="inline-flex items-center gap-2.5">
@@ -135,28 +128,6 @@ export function PublicFooter() {
               </li>
             ))}
           </ul>
-        </div>
-
-        {/* Demo notice */}
-        <div className={cn("rounded-2xl border p-5 backdrop-blur", t.card)}>
-          <p className={cn("inline-flex items-center gap-2 text-sm font-semibold", t.notice)}>
-            <Info className="size-4" />
-            Demo notice
-          </p>
-          <p className={cn("mt-2 text-sm leading-relaxed", t.body)}>
-            All outages, schedules and customer data shown here are sample data created for an
-            academic assignment. This is not a live feed from any electricity authority.
-          </p>
-        </div>
-      </div>
-
-      <div className={cn("relative border-t", t.divider)}>
-        <div className={cn("mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-4 py-5 text-xs sm:flex-row", t.bottom)}>
-          <p>© 2026 PowerGrid BD · Academic demonstration project</p>
-          <p className="inline-flex items-center gap-1.5">
-            <Zap className="size-3.5 text-amber-400" />
-            Powering Bangladesh, one feeder at a time
-          </p>
         </div>
       </div>
     </footer>

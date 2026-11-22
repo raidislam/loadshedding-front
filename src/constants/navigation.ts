@@ -64,3 +64,11 @@ export const ROLE_LABEL: Record<Role, string> = {
   CUSTOMER: "Customer",
   TECHNICIAN: "Technician",
 };
+
+// Public pages that use the dark electric theme. The navbar and footer switch
+// to their dark variants on these routes.
+export const DARK_PUBLIC_ROUTES = ["/", "/about", "/services", "/contact", "/outage-status"];
+
+export function isDarkPublicRoute(pathname: string) {
+  return DARK_PUBLIC_ROUTES.includes(pathname);
+}

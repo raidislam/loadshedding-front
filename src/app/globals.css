@@ -255,3 +255,85 @@
     linear-gradient(90deg, rgb(30 58 138 / 0.06) 1px, transparent 1px);
   background-size: 40px 40px;
 }
+
+/* ---- About page ---- */
+.about-aurora {
+  animation: about-aurora 18s linear infinite;
+}
+@keyframes about-aurora {
+  to { transform: translateX(-50%) rotate(360deg); }
+}
+
+.about-pulse {
+  animation: about-pulse 3.5s ease-in-out infinite;
+}
+@keyframes about-pulse {
+  0% { top: 0.5rem; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { top: calc(100% - 1rem); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .about-aurora,
+  .about-pulse {
+    animation: none;
+  }
+}
+
+/* Dark tokens for UI components placed on dark public pages (e.g. the contact form).
+   Apply by adding the `dark` class to a wrapper element. */
+.dark {
+  color-scheme: dark;
+  --background: oklch(0.16 0.04 262);
+  --foreground: oklch(0.96 0.01 250);
+  --card: oklch(0.19 0.05 262);
+  --card-foreground: oklch(0.96 0.01 250);
+  --popover: oklch(0.19 0.05 262);
+  --popover-foreground: oklch(0.96 0.01 250);
+  --primary: oklch(0.6 0.2 255);
+  --primary-foreground: oklch(0.99 0 0);
+  --muted: oklch(0.25 0.04 262);
+  --muted-foreground: oklch(0.7 0.03 255);
+  --accent: oklch(0.27 0.06 262);
+  --accent-foreground: oklch(0.98 0 0);
+  --destructive: oklch(0.7 0.19 22);
+  --border: oklch(1 0 0 / 0.1);
+  --input: oklch(1 0 0 / 0.14);
+  --ring: oklch(0.72 0.15 235);
+}
+
+/* ---- Contact page form ---- */
+.contact-form input,
+.contact-form textarea {
+  border-radius: 0.875rem;
+  background-color: rgb(255 255 255 / 0.04);
+  padding-inline: 0.875rem;
+  transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
+}
+.contact-form input {
+  height: 2.75rem;
+}
+.contact-form input:hover,
+.contact-form textarea:hover {
+  background-color: rgb(255 255 255 / 0.06);
+}
+.contact-form input:focus-visible,
+.contact-form textarea:focus-visible {
+  background-color: rgb(14 165 233 / 0.06);
+  box-shadow: 0 0 0 3px rgb(56 189 248 / 0.25), 0 0 24px rgb(56 189 248 / 0.15);
+}
+.contact-form label {
+  color: rgb(203 213 225);
+}
+.contact-form button[type="submit"] {
+  height: 2.75rem;
+  border-radius: 9999px;
+  padding-inline: 1.5rem;
+  background-image: linear-gradient(90deg, var(--electric), oklch(0.51 0.23 277));
+  box-shadow: 0 10px 30px -8px rgb(56 189 248 / 0.55);
+  font-weight: 600;
+}
+.contact-form button[type="submit"]:hover {
+  filter: brightness(1.1);
+}

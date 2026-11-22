@@ -4,9 +4,7 @@ import { Activity, CalendarClock, MapPinned } from "lucide-react";
 import { DataTable, type Column } from "@/components/shared/DataTable";
 import { Pagination } from "@/components/shared/Pagination";
 import { SearchFilterBar } from "@/components/shared/SearchFilterBar";
-import { StatCard } from "@/components/shared/StatCard";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { Card } from "@/components/ui/card";
 import { OPEN_STATUSES, OUTAGE_STATUS, OUTAGE_TYPE } from "@/constants/statuses";
 import { useLoad } from "@/hooks/useLoad";
 import { useUrlFilters } from "@/hooks/useUrlFilters";
@@ -31,7 +29,11 @@ export function OutageStatusBoard() {
   const { data, error, loading } = useLoad(loadBoard);
   const { get, page } = useUrlFilters();
 
-  if (error) return <Card className="p-6 text-destructive">{error}</Card>;
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-red-400/30 bg-red-500/10 p-6 text-red-300">{error}</div>
+    );
+  }
 
   const zones = data?.zones ?? [];
   const areas = data?.areas ?? [];
@@ -85,12 +87,39 @@ export function OutageStatusBoard() {
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard title="Active outages" value={loading ? "-" : activeCount} icon={Activity} tone="danger" />
-        <StatCard title="Scheduled outages" value={loading ? "-" : scheduledCount} icon={CalendarClock} tone="primary" />
-        <StatCard title="Areas affected" value={loading ? "-" : affectedAreas} icon={MapPinned} tone="warning" />
+        {[
+          { title: "Active outages", value: activeCount, icon: Activity, tint: "from-rose-500 to-red-500", glow: "bg-rose-500", live: true },
+          { title: "Scheduled outages", value: scheduledCount, icon: CalendarClock, tint: "from-sky-500 to-indigo-500", glow: "bg-sky-500", live: false },
+          { title: "Areas affected", value: affectedAreas, icon: MapPinned, tint: "from-amber-500 to-orange-500", glow: "bg-amber-500", live: false },
+        ].map((s) => (
+          <div
+            key={s.title}
+            className="group relative overflow-hidden rounded-2xl border border-white/10 bg-white/3 p-5 backdrop-blur transition duration-300 hover:-translate-y-1 hover:border-white/20 hover:bg-white/6"
+          >
+            <div className={`pointer-events-none absolute -top-12 -right-12 size-32 rounded-full ${s.glow} opacity-15 blur-3xl transition-opacity group-hover:opacity-30`} />
+            <div className="relative flex items-center gap-4">
+              <span className={`flex size-12 shrink-0 items-center justify-center rounded-2xl bg-linear-to-br ${s.tint} text-white shadow-lg`}>
+                <s.icon className="size-5" />
+              </span>
+              <div className="min-w-0">
+                <p className="flex items-center gap-2 truncate text-sm text-slate-400">
+                  {s.title}
+                  {s.live && !loading && s.value > 0 && (
+                    <span className="relative flex size-2">
+                      <span className="absolute inline-flex size-full animate-ping rounded-full bg-rose-400 opacity-75" />
+                      <span className="relative inline-flex size-2 rounded-full bg-rose-500" />
+                    </span>
+                  )}
+                </p>
+                <p className="text-3xl font-bold text-white">{loading ? "-" : s.value}</p>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
 
-      <Card className="gap-0 py-0">
+      <div className="overflow-hidden rounded-3xl bg-linear-to-br from-sky-400/30 via-white/10 to-indigo-500/30 p-px">
+      <div className="overflow-hidden rounded-[calc(1.5rem-1px)] bg-[#050d24]/95 backdrop-blur">
         <SearchFilterBar
           showSearch={false}
           filters={[
@@ -112,6 +141,7 @@ export function OutageStatusBoard() {
             },
           ]}
           dateFilter={{ key: "date", label: "Filter by date" }}
+          popupClassName="dark"
         />
         <DataTable
           columns={columns}
@@ -122,7 +152,8 @@ export function OutageStatusBoard() {
           emptyDescription="Try another zone, area or date, or clear the filters."
         />
         <Pagination page={paged.page} totalPages={paged.totalPages} totalItems={paged.totalItems} />
-      </Card>
+      </div>
+      </div>
     </div>
   );
 }

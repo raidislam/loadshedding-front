@@ -23,6 +23,7 @@ interface SearchFilterBarProps {
   showSearch?: boolean;
   filters?: FilterConfig[];
   dateFilter?: { key: string; label: string }; // optional date picker
+  popupClassName?: string; // extra classes for dropdown menus, e.g. "dark" on dark pages
 }
 
 // Search box + dropdown filters. Everything is saved in the URL query string.
@@ -31,6 +32,7 @@ export function SearchFilterBar({
   showSearch = true,
   filters = [],
   dateFilter,
+  popupClassName,
 }: SearchFilterBarProps) {
   const { get, setParams, clearAll, hasFilters } = useUrlFilters();
 
@@ -64,7 +66,7 @@ export function SearchFilterBar({
             <SelectTrigger className="sm:w-48" aria-label={filter.label}>
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className={popupClassName}>
               {items.map((item) => (
                 <SelectItem key={item.value} value={item.value}>
                   {item.label}
