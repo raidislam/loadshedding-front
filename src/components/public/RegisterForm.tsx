@@ -1,5 +1,6 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Controller, useForm } from "react-hook-form";
@@ -13,16 +14,20 @@ import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ROLE_HOME } from "@/constants/navigation";
-import { useLoad } from "@/hooks/useLoad";
+import { api, errorMessage } from "@/lib/api";
 import { registerSchema, type RegisterValues } from "@/lib/validations";
-import { getAreas } from "@/services/areas";
-import { registerCustomer } from "@/services/auth";
+import type { Area } from "@/types/api";
 
 export function RegisterForm() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { register: registerCustomer } = useAuth();
   useRedirectIfLoggedIn();
-  const { data: areas } = useLoad(getAreas);
+
+  // Public list of areas for the "Service area" dropdown
+  const { data: areas, isLoading: areasLoading } = useQuery({
+    queryKey: ["areas", "options"],
+    queryFn: async () => (await api<Area[]>("/areas", { query: { limit: 100, sortBy: "name", sortOrder: "asc" } })).data,
+  });
 
   const {
     register,
@@ -34,23 +39,26 @@ export function RegisterForm() {
     defaultValues: { areaId: "" },
   });
 
-  const areaItems = (areas ?? []).map((a) => ({ value: a.id, label: a.name }));
+  const areaItems = (areas ?? []).map((a) => ({
+    value: a.id,
+    label: `${a.name} (${a.feeder.substation.zone.name})`,
+  }));
 
   async function onSubmit(values: RegisterValues) {
     try {
+      // confirmPassword is only for the form; the backend does not need it
       await registerCustomer({
         name: values.name,
         email: values.email,
         phone: values.phone,
-        password: values.password,
         address: values.address,
         areaId: values.areaId,
+        password: values.password,
       });
-      await login(values.email, values.password);
       toast.success("Account created. Welcome!");
       router.replace(ROLE_HOME.CUSTOMER);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Registration failed.");
+      toast.error(errorMessage(e));
     }
   }
 
@@ -81,7 +89,7 @@ export function RegisterForm() {
               render={({ field }) => (
                 <Select items={areaItems} value={field.value || null} onValueChange={(v) => field.onChange(v ?? "")}>
                   <SelectTrigger id="areaId" className="w-full" aria-invalid={!!errors.areaId}>
-                    <SelectValue placeholder="Choose your area" />
+                    <SelectValue placeholder={areasLoading ? "Loading areas..." : "Choose your area"} />
                   </SelectTrigger>
                   <SelectContent>
                     {areaItems.map((a) => (

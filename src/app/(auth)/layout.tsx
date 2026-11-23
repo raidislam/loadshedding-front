@@ -11,7 +11,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
       </Link>
       <div className="w-full max-w-md">{children}</div>
       <p className="mt-6 max-w-md text-center text-xs text-muted-foreground">
-        Demo authentication only. Accounts are stored in your browser and are not secure.
+        Secure login: your session is kept in httpOnly cookies and checked by the server.
       </p>
     </main>
   );

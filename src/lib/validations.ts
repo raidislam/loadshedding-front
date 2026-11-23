@@ -3,12 +3,20 @@ import { z } from "zod";
 // Zod schemas used with React Hook Form. The messages are what the user sees.
 
 // Accepts 01811234567, 01811-234567, 01811 234567, +8801811234567
-// (dashes and spaces are ignored before checking the pattern)
-const phoneSchema = z
+// and turns it into "01811234567", the only format the backend accepts.
+export const phoneSchema = z
   .string()
-  .refine((value) => /^(\+?88)?01[3-9]\d{8}$/.test(value.replace(/[\s-]/g, "")), {
-    message: "Enter a valid Bangladeshi mobile number, e.g. 01811-234567.",
-  });
+  .trim()
+  .transform((value) => value.replace(/[\s-]/g, "").replace(/^\+?88/, ""))
+  .pipe(z.string().regex(/^01[3-9]\d{8}$/, "Enter a valid Bangladeshi mobile number, e.g. 01811-234567."));
+
+// Same rule as the backend: 8-64 characters, at least one letter and one number
+export const passwordSchema = z
+  .string()
+  .min(8, "Password must be at least 8 characters.")
+  .max(64, "Password cannot be longer than 64 characters.")
+  .regex(/[A-Za-z]/, "Password must contain at least one letter.")
+  .regex(/[0-9]/, "Password must contain at least one number.");
 
 export const contactSchema = z.object({
   name: z.string().trim().min(2, "Please enter your full name."),
@@ -26,12 +34,12 @@ export type LoginValues = z.infer<typeof loginSchema>;
 
 export const registerSchema = z
   .object({
-    name: z.string().trim().min(2, "Please enter your full name."),
+    name: z.string().trim().min(2, "Please enter your full name.").max(100, "Name is too long."),
     email: z.email("Please enter a valid email address."),
     phone: phoneSchema,
-    address: z.string().trim().min(5, "Please enter your address."),
+    address: z.string().trim().min(3, "Please enter your address.").max(255, "Address is too long."),
     areaId: z.string().min(1, "Please choose your service area."),
-    password: z.string().min(6, "Password must be at least 6 characters."),
+    password: passwordSchema,
     confirmPassword: z.string().min(1, "Please confirm your password."),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -122,12 +130,38 @@ export type AssignValues = z.infer<typeof assignSchema>;
 
 // ---------- Users & profile ----------
 
+// Empty is allowed (field left blank), otherwise it must be a valid BD number
+const optionalPhoneSchema = z.union([z.literal(""), phoneSchema]);
+
+// PATCH /users/me. meterNumber and areaId are only used for customers.
 export const profileSchema = z.object({
-  name: z.string().trim().min(2, "Please enter your full name."),
-  phone: phoneSchema,
-  address: z.string().trim().min(5, "Please enter your address."),
+  name: z.string().trim().min(2, "Please enter your full name.").max(100, "Name is too long."),
+  phone: optionalPhoneSchema,
+  address: z
+    .string()
+    .trim()
+    .max(255, "Address is too long.")
+    .refine((v) => v === "" || v.length >= 3, "Address is too short."),
+  meterNumber: z
+    .string()
+    .trim()
+    .refine((v) => v === "" || (v.length >= 5 && v.length <= 20), "Meter number must be 5-20 characters."),
+  areaId: z.string(),
 });
 export type ProfileValues = z.infer<typeof profileSchema>;
+
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Please enter your current password."),
+    newPassword: passwordSchema,
+    confirmPassword: z.string().min(1, "Please confirm the new password."),
+  })
+  .refine((d) => d.newPassword === d.confirmPassword, { message: "Passwords do not match.", path: ["confirmPassword"] })
+  .refine((d) => d.newPassword !== d.currentPassword, {
+    message: "New password must be different from the current one.",
+    path: ["newPassword"],
+  });
+export type ChangePasswordValues = z.infer<typeof changePasswordSchema>;
 
 export const userSchema = z
   .object({

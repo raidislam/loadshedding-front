@@ -29,11 +29,11 @@ export function ReportOutageForm() {
   const [image, setImage] = useState<File | null>(null);
   const [imageError, setImageError] = useState("");
 
-  const { register, control, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<ReportValues>({
+  const { register, control, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm({
     resolver: zodResolver(reportSchema),
     defaultValues: {
       location: user.address ?? "", description: "", problemStart: "",
-      contactName: user.name, contactPhone: user.phone,
+      contactName: user.name, contactPhone: user.phone ?? "",
     },
   });
 

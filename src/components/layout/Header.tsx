@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ROLE_LABEL } from "@/constants/navigation";
 import { initials } from "@/lib/format";
-import type { User } from "@/types";
+import type { User } from "@/types/api";
 
 interface HeaderProps {
   user: User;
@@ -36,8 +36,8 @@ export function Header({ user, onMenuClick }: HeaderProps) {
         ? "/technician/profile"
         : "/admin/settings";
 
-  function handleLogout() {
-    logout();
+  async function handleLogout() {
+    await logout();
     toast.success("You have been logged out.");
     router.replace("/login");
   }

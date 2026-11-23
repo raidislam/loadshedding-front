@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Shield, User as UserIcon, Wrench } from "lucide-react";
@@ -14,8 +15,9 @@ import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { ROLE_HOME } from "@/constants/navigation";
+import { errorMessage } from "@/lib/api";
 import { loginSchema, type LoginValues } from "@/lib/validations";
-import type { Role } from "@/types";
+import type { Role } from "@/types/api";
 
 const demoButtons: { role: Role; label: string; icon: typeof Shield }[] = [
   { role: "ADMIN", label: "Admin Demo Login", icon: Shield },
@@ -34,20 +36,30 @@ export function LoginForm() {
     formState: { errors, isSubmitting },
   } = useForm<LoginValues>({ resolver: zodResolver(loginSchema) });
 
+  // Which demo button is busy (so we can show "Logging in..." on it)
+  const [demoLoading, setDemoLoading] = useState<Role | null>(null);
+
   async function onSubmit(values: LoginValues) {
     try {
       const user = await login(values.email, values.password);
       toast.success(`Welcome back, ${user.name}!`);
       router.replace(ROLE_HOME[user.role]);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Login failed.");
+      toast.error(errorMessage(e));
     }
   }
 
-  function handleDemo(role: Role) {
-    const user = loginAs(role);
-    toast.success(`Logged in as ${user.name} (demo)`);
-    router.replace(ROLE_HOME[role]);
+  async function handleDemo(role: Role) {
+    setDemoLoading(role);
+    try {
+      const user = await loginAs(role);
+      toast.success(`Logged in as ${user.name} (demo)`);
+      router.replace(ROLE_HOME[user.role]);
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setDemoLoading(null);
+    }
   }
 
   return (
@@ -77,8 +89,15 @@ export function LoginForm() {
 
         <div className="space-y-2">
           {demoButtons.map((b) => (
-            <Button key={b.role} type="button" variant="outline" className="h-10 w-full justify-start" onClick={() => handleDemo(b.role)}>
-              <b.icon /> {b.label}
+            <Button
+              key={b.role}
+              type="button"
+              variant="outline"
+              className="h-10 w-full justify-start"
+              disabled={demoLoading !== null || isSubmitting}
+              onClick={() => handleDemo(b.role)}
+            >
+              <b.icon /> {demoLoading === b.role ? "Logging in..." : b.label}
             </Button>
           ))}
         </div>

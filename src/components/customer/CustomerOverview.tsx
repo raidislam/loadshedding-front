@@ -120,7 +120,7 @@ export function CustomerOverview() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><MapPin className="size-4" /> Your service area</CardTitle>
-            <CardDescription>Customer no. {user.customerNumber ?? "-"}</CardDescription>
+            <CardDescription>Meter no. {user.meterNumber ?? "-"}</CardDescription>
           </CardHeader>
           <CardContent>
             <dl className="grid grid-cols-2 gap-3 text-sm">
