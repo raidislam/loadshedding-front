@@ -33,8 +33,9 @@ export const NAV_ITEMS: Record<Role, NavItem[]> = {
     { label: "Feeders", href: "/admin/feeders", icon: Zap },
     { label: "Areas", href: "/admin/areas", icon: Map },
     { label: "Outage Management", href: "/admin/outages", icon: AlertTriangle },
-    { label: "Reports", href: "/admin/reports", icon: BarChart3 },
+    { label: "Customer Reports", href: "/admin/reports", icon: BarChart3 },
     { label: "User Management", href: "/admin/users", icon: Users },
+    { label: "Notifications", href: "/admin/notifications", icon: Bell },
     { label: "Settings", href: "/admin/settings", icon: Settings },
   ],
   CUSTOMER: [
@@ -48,6 +49,7 @@ export const NAV_ITEMS: Record<Role, NavItem[]> = {
     { label: "Dashboard", href: "/technician", icon: LayoutDashboard },
     { label: "Assigned Jobs", href: "/technician/jobs", icon: Briefcase },
     { label: "Job History", href: "/technician/history", icon: History },
+    { label: "Notifications", href: "/technician/notifications", icon: Bell },
     { label: "Profile", href: "/technician/profile", icon: User },
   ],
 };

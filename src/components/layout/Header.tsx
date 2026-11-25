@@ -16,7 +16,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ROLE_LABEL } from "@/constants/navigation";
+import { ROLE_HOME, ROLE_LABEL } from "@/constants/navigation";
 import { initials } from "@/lib/format";
 import type { User } from "@/types/api";
 
@@ -58,7 +58,8 @@ export function Header({ user, onMenuClick }: HeaderProps) {
       </p>
 
       <div className="flex items-center gap-2">
-        {user.role === "CUSTOMER" && <NotificationBell userId={user.id} />}
+        {/* Every role gets notifications from the backend */}
+        <NotificationBell href={`${ROLE_HOME[user.role]}/notifications`} />
 
         <DropdownMenu>
           <DropdownMenuTrigger
