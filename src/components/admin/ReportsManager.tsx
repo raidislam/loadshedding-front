@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { AssignTechnicianDialog } from "@/components/admin/AssignTechnicianDialog";
 import { ReviewReportDialog } from "@/components/admin/ReviewReportDialog";
 import { ReportDetailsDialog } from "@/components/customer/ReportDetailsDialog";
 import { DataTable, type Column } from "@/components/shared/DataTable";
@@ -21,6 +22,7 @@ export function ReportsManager() {
   const { get, page } = useUrlFilters();
   const [reviewing, setReviewing] = useState<OutageReport | null>(null);
   const [viewingId, setViewingId] = useState<string | null>(null);
+  const [assigning, setAssigning] = useState<OutageReport | null>(null);
 
   const { data: zones = [] } = useOptions<Zone>("zones", { sortBy: "name", sortOrder: "asc" });
   // GET /outage-reports (admin only): search, filters and pages on the backend
@@ -66,8 +68,19 @@ export function ReportsManager() {
             View
           </Button>
           {(r.status === "PENDING" || r.status === "UNDER_REVIEW") && (
-            <Button size="sm" onClick={() => setReviewing(r)}>
-              Review
+            <Button size="sm" variant={r.status === "UNDER_REVIEW" ? "outline" : "default"} onClick={() => setReviewing(r)}>
+              {r.status === "PENDING" ? "Review" : "Reject"}
+            </Button>
+          )}
+          {r.status === "UNDER_REVIEW" && (
+            <Button size="sm" onClick={() => setAssigning(r)}>
+              Assign
+            </Button>
+          )}
+          {/* A technician can be changed only before the work starts */}
+          {r.status === "ASSIGNED" && r.assignment && r.assignment.status !== "IN_PROGRESS" && (
+            <Button size="sm" variant="outline" onClick={() => setAssigning(r)}>
+              Change technician
             </Button>
           )}
         </div>
@@ -103,6 +116,7 @@ export function ReportsManager() {
 
       <ReviewReportDialog key={reviewing?.id ?? "none"} report={reviewing} onClose={() => setReviewing(null)} />
       <ReportDetailsDialog reportId={viewingId} onClose={() => setViewingId(null)} />
+      <AssignTechnicianDialog key={`assign-${assigning?.id ?? "none"}`} report={assigning} onClose={() => setAssigning(null)} />
     </>
   );
 }
