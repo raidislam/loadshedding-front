@@ -1,77 +1,125 @@
 # Load Shedding & Power Management System (frontend)
 
-A frontend-only academic project built with **Next.js 16 (App Router)**, **TypeScript**, **Tailwind CSS v4** and **shadcn/ui**.
-It shows the full workflow of an electricity distribution company: infrastructure, scheduled load shedding,
-customer outage reports, technician repairs and power restoration.
+The web app for an academic electricity-distribution project. It covers the network (zones → substations → feeders → areas),
+scheduled load shedding, customer outage reports, technician repairs, monthly bills and online payment.
 
-> All data is **demonstration data** stored in the browser (localStorage). There is no backend, database or real
-> authentication. Nothing here is a live feed from an electricity authority.
+- **Frontend:** Next.js 16 (App Router), TypeScript, Tailwind CSS v4, shadcn/ui
+- **Backend:** [loadsheeding-backend](https://loadsheeding-backend.vercel.app/), an Express + Prisma + PostgreSQL REST API (`/api/v1`)
+- **Payments:** SSLCommerz **sandbox** (test mode, no real money)
 
-## Run it
+All data comes from the backend database. The frontend has no mock data.
+
+## Demo accounts
+
+Use the one-click **Demo Login** buttons on `/login`, or type the credentials:
+
+| Role       | Email                              | Password           | Lands on      |
+| ---------- | ---------------------------------- | ------------------ | ------------- |
+| Admin      | `demo.admin@loadshedding.com`      | `DemoAdmin@123`    | `/admin`      |
+| Customer   | `demo.customer@loadshedding.com`   | `DemoCustomer@123` | `/dashboard`  |
+| Technician | `demo.technician@loadshedding.com` | `DemoTech@123`     | `/technician` |
+
+New customers can sign up at `/register`. Admins create technician accounts under **User Management**.
+
+## Run it locally
 
 ```bash
 npm install
-npm run dev        # http://localhost:3000
+cp .env.example .env.local   # then fill in the demo emails and passwords above
+npm run dev                  # http://localhost:3000
+```
+
+Checks:
+
+```bash
 npm run lint
 npx tsc --noEmit
 npm run build && npm start
 ```
 
-## Demo accounts
+### Environment variables
 
-Use the three **Demo Login** buttons on `/login`, or type the credentials:
+| Name                                   | Used by        | Purpose                                                      |
+| -------------------------------------- | -------------- | ------------------------------------------------------------ |
+| `BACKEND_API_URL`                      | server only    | Backend base URL, e.g. `https://loadsheeding-backend.vercel.app/api/v1` |
+| `NEXT_PUBLIC_DEMO_ADMIN_EMAIL` / `_PASSWORD`      | browser | Demo Login button for the admin      |
+| `NEXT_PUBLIC_DEMO_CUSTOMER_EMAIL` / `_PASSWORD`   | browser | Demo Login button for the customer   |
+| `NEXT_PUBLIC_DEMO_TECHNICIAN_EMAIL` / `_PASSWORD` | browser | Demo Login button for the technician |
 
-| Role        | Email                        | Password      | Lands on      |
-| ----------- | ---------------------------- | ------------- | ------------- |
-| Admin       | `admin@powergrid.demo`       | `admin123`    | `/admin`      |
-| Customer    | `customer@powergrid.demo`    | `customer123` | `/dashboard`  |
-| Technician  | `technician@powergrid.demo`  | `tech123`     | `/technician` |
+The demo accounts must exist in the backend database. When the frontend is deployed, set the backend's
+`FRONTEND_URL` to the frontend address so SSLCommerz sends the customer back to the right site.
 
-New customers can sign up at `/register`. Admins can add admin, customer and technician users.
-**Admin → Settings → Reset demo data** restores the original sample data.
+## Workflows to try
 
-## The main workflow to try
+**Outage report → repair**
 
-1. **Customer** reports a power failure (`/dashboard/report-outage`). Status: `REPORTED`.
-2. **Admin** reviews it under *Reports* and assigns a technician. An outage is created. Status: `ASSIGNED`.
-3. **Technician** accepts the job, starts the repair, adds notes and evidence, and submits completion.
-   Status: `IN_PROGRESS` then `REPAIR_COMPLETED`.
-4. **Admin** confirms restoration. Status: `RESTORED`. Customers in the area are notified.
+1. **Customer** reports a power failure at *Report Outage*. Status: `PENDING`.
+2. **Admin** opens *Customer Reports*, reviews it (`UNDER_REVIEW`) or rejects it, then assigns a technician (`ASSIGNED`).
+3. **Technician** accepts the job and starts work (`IN_PROGRESS`), then submits a repair report.
+4. The report becomes `RESOLVED`. The customer is notified at each step and can follow the progress timeline.
 
-Admins can also schedule load shedding with the 5-step form at `/admin/outages/new`.
+**Scheduled load shedding:** Admin → *Outage Management* → *Create outage* (a 5-step form). Customers in the area
+are notified, and the outage appears on the public `/outage-status` page.
 
-## How the code is organised
+**Bill payment (SSLCommerz sandbox)**
+
+1. **Admin** creates a monthly bill for a customer under *Bills*.
+2. **Customer** opens *My Bills* and clicks *Pay now*. The browser goes to the SSLCommerz sandbox page.
+3. Pay with one of the sandbox test methods shown on that page.
+4. The backend validates the payment with SSLCommerz, marks the bill `PAID`, and redirects to `/payment/success`
+   (or `/payment/cancel`). The result page shows the real payment record. *Payment History* lists every attempt.
+
+## How it works
+
+```
+Browser ──> Next.js route handlers (/api/auth/*, /api/backend/*) ──> Backend API
+              stores JWTs in httpOnly cookies, adds the Bearer token,
+              refreshes the access token on a 401
+```
+
+- **Auth (BFF pattern):** `/api/auth/login|register|logout` set the httpOnly `ls_access` and `ls_refresh` cookies and a
+  readable `ls_role` cookie. JavaScript never sees the tokens. The browser only calls this app, so no CORS is needed.
+- **Protected routes:** `src/proxy.ts` (Next.js 16's name for middleware) sends visitors who are not logged in to `/login`,
+  and sends users who open another role's section to their own dashboard. The backend still checks the JWT and the
+  role on every request.
+- **Role-based UI:** each role has its own sidebar menu (`constants/navigation.ts`) and section: `/admin`, `/dashboard`
+  (customer) and `/technician`.
+- **Data fetching:** TanStack Query (`hooks/useApi.ts`: `useList`, `useDetail`, `useOptions`). Mutations invalidate the
+  related lists. Search, filters and the page number live in the URL (`hooks/useUrlFilters.ts`).
+- **State:** Zustand (`store/authStore.ts`) holds the logged-in user.
+- **Forms:** React Hook Form + Zod (`lib/validations.ts`). The rules match the backend's validation.
+- **Server Components:** the public pages (home stats, `/outage-status`) fetch on the server, with `"use cache"` where
+  the data can be a few minutes old. Dashboards are client components because they use the user's session.
+- **Loading and errors:** each section has `loading.tsx` (skeletons) and `error.tsx` (error boundary). There is also
+  `global-error.tsx` and `not-found.tsx`.
+- **Time zone:** all dates are shown in Asia/Dhaka time.
+
+## Folder structure
 
 ```
 src/
-  app/            routes: (public), (auth), admin, dashboard (customer), technician, payment
+  app/
+    (public)/       home, about, services, contact, outage-status, payment/success|cancel
+    (auth)/         login, register
+    admin/          overview, network (zones, substations, feeders, areas), outages, reports,
+                    repair jobs, bills, users, audit log, notifications, settings
+    dashboard/      customer: overview, report outage, my reports, bills, payments, notifications, profile
+    technician/     overview, assigned jobs, job details, history, notifications, profile
+    api/            auth route handlers + /api/backend/[...path] forwarder
   components/
-    ui/           shadcn/ui primitives
-    shared/       reusable pieces: DataTable, Pagination, SearchFilterBar, StatusBadge, ConfirmDialog ...
-    layout/       dashboard shell (sidebar + header), public navbar/footer, AuthProvider
+    ui/             shadcn/ui primitives
+    shared/         DataTable, Pagination, SearchFilterBar, StatusBadge, FormDialog, ConfirmDialog, ...
+    layout/         dashboard shell, sidebar, public navbar/footer, AuthProvider
     admin/ customer/ technician/ public/   feature components
-  services/       mock "API": async functions with a short delay, reading/writing localStorage
-  mock-data/      seed data (zones, substations, feeders, areas, outages, reports ...)
-  types/          shared TypeScript types
-  constants/      status labels/colours and role navigation
-  hooks/          useUrlFilters (search/filter/page in the URL), useLoad (loading + error state)
-  lib/            validation schemas (Zod), formatting, storage helpers
+  hooks/            useApi, useUrlFilters
+  lib/              api client, validation schemas, formatting, server-only backend helpers
+  store/            Zustand auth store
+  constants/        status labels, navigation, notification icons
+  types/api.ts      types that match the backend responses
+  proxy.ts          route protection
 ```
-
-Key decisions:
-
-- **Service layer**: pages call functions such as `getOutages()` or `assignTechnician()`. To connect a real backend later,
-  only the bodies of the functions in `src/services/` need to change.
-- **One place for status changes**: `applyOutageStatus()` in `services/outages.ts` updates the outage, the customer's
-  report timeline, the technician's availability and the notifications together.
-- **URL state**: search, filters and pages are kept in the query string, for example
-  `/admin/outages?type=UNEXPECTED&status=ASSIGNED&page=1`.
-- **Route protection**: each role's layout redirects other roles. This is a **demo only** and is not secure.
-- **Cache Components** is enabled in `next.config.ts`, so pages that read the URL are wrapped in `<Suspense>`.
-  Pages whose content comes from browser storage set `export const instant = false` to skip a dev-only check.
 
 ## Known limits
 
-- Photos and evidence are not uploaded. Only the file names are kept.
-- Passwords are stored in plain text in localStorage because this is a demo.
-- `/payment/success` and `/payment/cancel` are labelled demonstration pages. There is no payment gateway.
+- The contact form has no backend endpoint. It opens the visitor's email app with the message filled in.
+- The contact details on the public pages are examples. This is not a real electricity authority.
