@@ -75,3 +75,23 @@ export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
 // Options for <SimpleSelect> / filter dropdowns
 export const toOptions = (map: Record<string, StatusInfo>) =>
   Object.entries(map).map(([value, info]) => ({ value, label: info.label }));
+
+// ---------- Audit log ----------
+
+// Actions the backend writes to the audit log (used for the filter dropdown)
+export const AUDIT_ACTIONS = [
+  "OUTAGE_CREATED", "OUTAGE_UPDATED", "OUTAGE_STATUS_CHANGED", "OUTAGE_DELETED",
+  "REPORT_CREATED", "REPORT_STATUS_CHANGED",
+  "TECHNICIAN_ASSIGNED", "TECHNICIAN_REASSIGNED", "ASSIGNMENT_STATUS_CHANGED", "REPAIR_COMPLETED",
+  "BILL_CREATED", "PAYMENT_SUCCESS", "PAYMENT_FAILED", "PAYMENT_CANCELLED", "PAYMENT_VALIDATION_FAILED",
+  "DUPLICATE_PAYMENT_NEEDS_REFUND",
+  "TECHNICIAN_CREATED", "USER_ROLE_CHANGED", "USER_BLOCKED", "USER_UNBLOCKED",
+];
+
+export const AUDIT_ENTITY_TYPES = ["Outage", "OutageReport", "TechnicianAssignment", "Bill", "Payment", "User"];
+
+// "OUTAGE_STATUS_CHANGED" -> "Outage status changed"
+export function actionLabel(action: string) {
+  const text = action.toLowerCase().replaceAll("_", " ");
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
