@@ -238,6 +238,24 @@ export const assignSchema = z.object({
 });
 export type AssignValues = z.infer<typeof assignSchema>;
 
+// Admin: POST /bills (same rules as the backend). Number fields are typed as text.
+export const billSchema = z.object({
+  customerId: z.string().min(1, "Please choose a customer."),
+  billMonth: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Choose the bill month."), // from <input type="month">
+  unitsConsumed: z
+    .string()
+    .trim()
+    .refine((v) => /^\d+$/.test(v), "Units must be a whole number (0 or more)."),
+  amount: z
+    .string()
+    .trim()
+    .refine((v) => /^\d+(\.\d{1,2})?$/.test(v), "Enter the amount in taka, e.g. 725.50 (max 2 decimals).")
+    .refine((v) => Number(v) >= 10, "The amount must be at least ৳10 (SSLCommerz minimum).")
+    .refine((v) => Number(v) <= 500000, "The amount is too large."),
+  dueDate: z.string().min(1, "Choose the due date."),
+});
+export type BillValues = z.infer<typeof billSchema>;
+
 // Technician: POST /assignments/:id/repair-report (completes the job)
 export const repairReportSchema = z.object({
   workDescription: z

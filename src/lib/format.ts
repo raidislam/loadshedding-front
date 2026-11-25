@@ -43,6 +43,17 @@ export function toDateTimeInput(iso?: string | null): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+// "725.5" or 725.5 -> "৳725.50"
+export function formatTaka(amount: string | number): string {
+  return `৳${Number(amount).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// "2026-11" -> "November 2026"
+export function formatBillMonth(billMonth: string): string {
+  const [year, month] = billMonth.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+}
+
 export function formatNumber(n: number): string {
   return n.toLocaleString("en-US");
 }
