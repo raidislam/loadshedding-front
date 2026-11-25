@@ -7,21 +7,26 @@ import { FormField } from "@/components/shared/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { delay } from "@/lib/delay";
 import { contactSchema, type ContactValues } from "@/lib/validations";
+
+export const SUPPORT_EMAIL = "support@powergrid.demo";
 
 export function ContactForm() {
   const {
     register,
     handleSubmit,
     reset,
-    formState: { errors, isSubmitting },
+    formState: { errors },
   } = useForm<ContactValues>({ resolver: zodResolver(contactSchema) });
 
-  async function onSubmit() {
-    // Demo only: nothing is sent anywhere.
-    await delay(700);
-    toast.success("Message sent. This is a demo, so no email was actually delivered.");
+  // The backend has no contact endpoint, so we don't pretend to send anything.
+  // Instead the visitor's own email app opens with the message already filled in.
+  function onSubmit(values: ContactValues) {
+    const body = `${values.message}
+
+- ${values.name} (${values.email})`;
+    window.location.assign(`mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(values.subject)}&body=${encodeURIComponent(body)}`);
+    toast.info("Your email app has been opened with this message. Press send there.");
     reset();
   }
 
@@ -41,8 +46,8 @@ export function ContactForm() {
       <FormField label="Message" htmlFor="message" error={errors.message?.message}>
         <Textarea id="message" rows={5} aria-invalid={!!errors.message} {...register("message")} />
       </FormField>
-      <Button type="submit" size="lg" className="h-10 px-4" disabled={isSubmitting}>
-        {isSubmitting ? "Sending..." : "Send message"}
+      <Button type="submit" size="lg" className="h-10 px-4">
+        Open in email app
       </Button>
     </form>
   );

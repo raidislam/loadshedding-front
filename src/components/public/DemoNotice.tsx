@@ -1,7 +1,7 @@
 import { Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// Shown wherever sample data is displayed, so nobody mistakes it for live data.
+// Reminds visitors that this is an academic project, not a real electricity authority.
 export function DemoNotice({ children, className }: { children?: string; className?: string }) {
   return (
     <div

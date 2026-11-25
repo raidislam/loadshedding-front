@@ -55,7 +55,7 @@ export default function ContactPage() {
                 </span>
                 <div>
                   <h2 className="text-lg font-bold text-white">Send a message</h2>
-                  <p className="text-sm text-slate-400">All fields are required.</p>
+                  <p className="text-sm text-slate-400">All fields are required. It opens in your email app.</p>
                 </div>
               </div>
               <div className="contact-form relative mt-6">
