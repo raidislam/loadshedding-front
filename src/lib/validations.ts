@@ -137,15 +137,23 @@ export const outageEditSchema = z
   .refine(restoreAfterStart, { message: "Restoration time must be after the start time.", path: ["expectedRestoreTime"] });
 export type OutageEditValues = z.infer<typeof outageEditSchema>;
 
-export const assignSchema = z.object({
-  technicianId: z.string().min(1, "Please choose a technician."),
-  priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"], { error: "Please choose a priority." }),
-  estimatedHours: z
-    .number({ error: "Enter the estimated hours as a number." })
-    .min(1, "Estimate at least 1 hour.")
-    .max(72, "Estimate cannot be more than 72 hours."),
-});
-export type AssignValues = z.infer<typeof assignSchema>;
+// ---------- Admin: review a customer report ----------
+// PATCH /outage-reports/:id/status. A reason (adminNote) is required when rejecting.
+export const reviewSchema = z
+  .object({
+    status: z.enum(["UNDER_REVIEW", "REJECTED"], { error: "Please choose a decision." }),
+    adminNote: z.string().trim().max(500, "Note cannot be longer than 500 characters."),
+    outageId: z.string(), // optional: link to an outage in the same area
+  })
+  .refine((d) => d.status !== "REJECTED" || d.adminNote.length >= 3, {
+    message: "Please write why the report is rejected (at least 3 characters).",
+    path: ["adminNote"],
+  })
+  .refine((d) => d.adminNote === "" || d.adminNote.length >= 3, {
+    message: "Note must be at least 3 characters.",
+    path: ["adminNote"],
+  });
+export type ReviewValues = z.infer<typeof reviewSchema>;
 
 // ---------- Users & profile ----------
 
@@ -204,25 +212,22 @@ export type UserValues = z.infer<typeof userSchema>;
 
 // ---------- Customer ----------
 
+// POST /outage-reports (same limits as the backend)
 export const reportSchema = z.object({
-  category: z.enum(["NO_POWER", "PARTIAL_POWER", "VOLTAGE_FLUCTUATION", "DAMAGED_LINE", "TRANSFORMER_PROBLEM", "OTHER"], {
-    error: "Please choose the type of problem.",
-  }),
-  location: z.string().trim().min(5, "Please describe where the problem is (house, road, landmark)."),
-  description: z.string().trim().min(10, "Please describe the problem in at least 10 characters."),
-  problemStart: z
+  title: z.string().trim().min(5, "Title must be at least 5 characters.").max(150, "Title is too long."),
+  description: z
     .string()
-    .min(1, "Please tell us when the problem started.")
-    .refine((v) => !v || new Date(v).getTime() <= Date.now(), "The start time cannot be in the future."),
-  contactName: z.string().trim().min(2, "Please enter a contact name."),
-  contactPhone: phoneSchema,
+    .trim()
+    .min(10, "Please describe the problem in at least 10 characters.")
+    .max(1000, "Description cannot be longer than 1000 characters."),
+  address: z
+    .string()
+    .trim()
+    .max(255, "Address is too long.")
+    .refine((v) => v === "" || v.length >= 3, "Address is too short."),
+  areaId: z.string().min(1, "Please choose the area where the power is out."),
 });
 export type ReportValues = z.infer<typeof reportSchema>;
-
-export const customerProfileSchema = profileSchema.extend({
-  areaId: z.string().min(1, "Please choose your service area."),
-});
-export type CustomerProfileValues = z.infer<typeof customerProfileSchema>;
 
 // ---------- Technician ----------
 

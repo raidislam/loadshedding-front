@@ -3,7 +3,7 @@ import { ReportOutageForm } from "@/components/customer/ReportOutageForm";
 
 export const metadata: Metadata = { title: "Report Outage" };
 
-// Content comes from browser-only demo data, so skip the dev-only instant-navigation check.
+// Data is loaded in the browser with the logged-in user's session, so skip the dev-only instant-navigation check.
 export const instant = false;
 
 export default function Page() {

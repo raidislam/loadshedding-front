@@ -1,104 +1,108 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { PageHeader } from "@/components/shared/PageHeader";
-import { ReportsAnalytics } from "@/components/admin/ReportsAnalytics";
 import { ReviewReportDialog } from "@/components/admin/ReviewReportDialog";
+import { ReportDetailsDialog } from "@/components/customer/ReportDetailsDialog";
 import { DataTable, type Column } from "@/components/shared/DataTable";
+import { PageHeader } from "@/components/shared/PageHeader";
 import { Pagination } from "@/components/shared/Pagination";
 import { SearchFilterBar } from "@/components/shared/SearchFilterBar";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { TableSkeleton } from "@/components/shared/TableSkeleton";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { OUTAGE_STATUS, REPORT_CATEGORY_LABEL } from "@/constants/statuses";
-import { useLoad } from "@/hooks/useLoad";
+import { REPORT_STATUS, toOptions } from "@/constants/labels";
+import { useList, useOptions } from "@/hooks/useApi";
 import { useUrlFilters } from "@/hooks/useUrlFilters";
+import { errorMessage } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import { paginate } from "@/lib/paginate";
-import { getAreas } from "@/services/areas";
-import { getMonthlyOutageStats, getZoneOutageStats } from "@/services/dashboard";
-import { getOutages } from "@/services/outages";
-import { getReports } from "@/services/reports";
-import { getTechnicians } from "@/services/technicians";
-import { getUsers } from "@/services/users";
-import type { OutageReport } from "@/types";
-
-async function loadData() {
-  const [reports, areas, users, technicians, outages, monthly, zoneStats] = await Promise.all([
-    getReports(), getAreas(), getUsers(), getTechnicians(), getOutages(), getMonthlyOutageStats(), getZoneOutageStats(),
-  ]);
-  return { reports, areas, users, technicians, outages, monthly, zoneStats };
-}
+import type { OutageReport, Zone } from "@/types/api";
 
 export function ReportsManager() {
-  const { data, loading, error, reload } = useLoad(loadData);
-  const { get, setParams, page } = useUrlFilters();
+  const { get, page } = useUrlFilters();
   const [reviewing, setReviewing] = useState<OutageReport | null>(null);
+  const [viewingId, setViewingId] = useState<string | null>(null);
 
-  const tab = get("tab", "reports");
-  const areaName = (id: string) => data?.areas.find((a) => a.id === id)?.name ?? "-";
-  const userName = (id: string) => data?.users.find((u) => u.id === id)?.name ?? "-";
-  const techName = (id?: string) => data?.technicians.find((t) => t.id === id)?.name ?? "-";
-
-  const q = get("q").toLowerCase();
-  const rows = (data?.reports ?? [])
-    .filter((r) => !q || r.id.toLowerCase().includes(q) || r.description.toLowerCase().includes(q) || areaName(r.areaId).toLowerCase().includes(q))
-    .filter((r) => !get("status") || r.status === get("status"));
-  const paged = paginate(rows, page);
+  const { data: zones = [] } = useOptions<Zone>("zones", { sortBy: "name", sortOrder: "asc" });
+  // GET /outage-reports (admin only): search, filters and pages on the backend
+  const { data, isLoading, error } = useList<OutageReport>("outage-reports", {
+    page,
+    limit: 10,
+    searchTerm: get("q") || undefined,
+    status: get("status") || undefined,
+    zoneId: get("zone") || undefined,
+    sortBy: "createdAt",
+    sortOrder: "desc",
+  });
 
   const columns: Column<OutageReport>[] = [
-    { header: "Report", cell: (r) => <span className="font-medium">{r.id}</span> },
-    { header: "Customer", cell: (r) => userName(r.customerId) },
-    { header: "Area", cell: (r) => areaName(r.areaId), className: "hidden md:table-cell" },
-    { header: "Problem", cell: (r) => REPORT_CATEGORY_LABEL[r.category], className: "hidden lg:table-cell" },
-    { header: "Reported", cell: (r) => formatDateTime(r.createdAt), className: "hidden xl:table-cell" },
-    { header: "Status", cell: (r) => <StatusBadge {...OUTAGE_STATUS[r.status]} /> },
-    { header: "Technician", cell: (r) => techName(r.technicianId), className: "hidden lg:table-cell" },
     {
-      header: "Action", className: "text-right",
-      cell: (r) => r.status === "REPORTED" ? (
-        <Button size="sm" onClick={() => setReviewing(r)}>Review</Button>
-      ) : r.outageId ? (
-        <Link href={`/admin/outages/${r.outageId}`} className={buttonVariants({ variant: "outline", size: "sm" })}>View outage</Link>
-      ) : null,
+      header: "Report",
+      cell: (r) => (
+        <div className="max-w-xs">
+          <p className="font-medium">{r.title}</p>
+          <p className="truncate text-xs text-muted-foreground">{r.description}</p>
+        </div>
+      ),
+    },
+    {
+      header: "Customer",
+      cell: (r) => (
+        <div>
+          <p>{r.customer?.name ?? "-"}</p>
+          <p className="text-xs text-muted-foreground">{r.customer?.phone ?? r.customer?.email}</p>
+        </div>
+      ),
+    },
+    { header: "Area", cell: (r) => r.area.name, className: "hidden md:table-cell" },
+    { header: "Reported", cell: (r) => formatDateTime(r.createdAt), className: "hidden xl:table-cell" },
+    { header: "Status", cell: (r) => <StatusBadge {...REPORT_STATUS[r.status]} /> },
+    { header: "Technician", cell: (r) => r.assignment?.technician.name ?? "-", className: "hidden lg:table-cell" },
+    {
+      header: "Actions",
+      className: "text-right",
+      cell: (r) => (
+        <div className="flex justify-end gap-2">
+          <Button size="sm" variant="outline" onClick={() => setViewingId(r.id)}>
+            View
+          </Button>
+          {(r.status === "PENDING" || r.status === "UNDER_REVIEW") && (
+            <Button size="sm" onClick={() => setReviewing(r)}>
+              Review
+            </Button>
+          )}
+        </div>
+      ),
     },
   ];
 
   return (
     <>
-      <PageHeader title="Reports" description="Review customer reports, assign technicians and see how the network is performing." />
-      <Tabs value={tab} onValueChange={(v) => setParams({ tab: String(v) })}>
-        <TabsList className="mb-4">
-          <TabsTrigger value="reports">Customer reports</TabsTrigger>
-          <TabsTrigger value="analytics">Analytics</TabsTrigger>
-        </TabsList>
+      <PageHeader title="Customer Reports" description="Review unexpected outages reported by customers." />
+      <Card className="gap-0 py-0">
+        <SearchFilterBar
+          searchPlaceholder="Search title, customer, area or address"
+          filters={[
+            { key: "status", label: "All statuses", options: toOptions(REPORT_STATUS) },
+            { key: "zone", label: "All zones", options: zones.map((z) => ({ value: z.id, label: z.name })) },
+          ]}
+        />
+        {error ? (
+          <p className="p-6 text-destructive">{errorMessage(error)}</p>
+        ) : (
+          <DataTable
+            columns={columns}
+            rows={data?.data ?? []}
+            getRowId={(r) => r.id}
+            loading={isLoading}
+            emptyTitle="No reports found"
+            emptyDescription="Customer reports will appear here."
+          />
+        )}
+        <Pagination page={data?.meta?.page ?? 1} totalPages={data?.meta?.totalPages ?? 1} totalItems={data?.meta?.total ?? 0} />
+      </Card>
 
-        <TabsContent value="reports">
-          <Card className="gap-0 py-0">
-            <SearchFilterBar searchPlaceholder="Search ID, area or text"
-              filters={[{ key: "status", label: "All statuses", options: Object.entries(OUTAGE_STATUS).filter(([s]) => ["REPORTED", "ASSIGNED", "IN_PROGRESS", "REPAIR_COMPLETED", "RESTORED"].includes(s)).map(([value, s]) => ({ value, label: s.label })) }]} />
-            {error ? <p className="p-6 text-destructive">{error}</p> : (
-              <DataTable columns={columns} rows={paged.items} getRowId={(r) => r.id} loading={loading}
-                emptyTitle="No reports found" emptyDescription="Customer reports will appear here." />
-            )}
-            <Pagination page={paged.page} totalPages={paged.totalPages} totalItems={paged.totalItems} />
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="analytics">
-          {data ? (
-            <ReportsAnalytics monthly={data.monthly} zones={data.zoneStats} reports={data.reports} outages={data.outages} technicians={data.technicians} />
-          ) : <Card><TableSkeleton /></Card>}
-        </TabsContent>
-      </Tabs>
-
-      <ReviewReportDialog report={reviewing} technicians={data?.technicians ?? []}
-        customer={data?.users.find((u) => u.id === reviewing?.customerId)}
-        area={data?.areas.find((a) => a.id === reviewing?.areaId)}
-        onClose={() => setReviewing(null)} onAssigned={reload} />
+      <ReviewReportDialog key={reviewing?.id ?? "none"} report={reviewing} onClose={() => setReviewing(null)} />
+      <ReportDetailsDialog reportId={viewingId} onClose={() => setViewingId(null)} />
     </>
   );
 }

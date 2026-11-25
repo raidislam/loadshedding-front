@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2 } from "lucide-react";
+import Link from "next/link";
+import { useState } from "react";
+import { Controller, useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { useRequiredUser } from "@/components/layout/AuthProvider";
 import { FormField } from "@/components/shared/FormField";
@@ -15,61 +16,37 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { OUTAGE_STATUS, REPORT_CATEGORY_LABEL } from "@/constants/statuses";
+import { REPORT_STATUS } from "@/constants/labels";
+import { useOptions } from "@/hooks/useApi";
+import { api, errorMessage } from "@/lib/api";
 import { reportSchema, type ReportValues } from "@/lib/validations";
-import { createOutageReport } from "@/services/reports";
-import type { OutageReport, ReportCategory } from "@/types";
-
-const MAX_IMAGE_MB = 5;
-const categoryOptions = Object.entries(REPORT_CATEGORY_LABEL).map(([value, label]) => ({ value, label }));
+import type { Area, OutageReport } from "@/types/api";
 
 export function ReportOutageForm() {
   const user = useRequiredUser();
+  const queryClient = useQueryClient();
   const [submitted, setSubmitted] = useState<OutageReport | null>(null);
-  const [image, setImage] = useState<File | null>(null);
-  const [imageError, setImageError] = useState("");
+  const { data: areas = [] } = useOptions<Area>("areas", { sortBy: "name", sortOrder: "asc" });
 
-  const { register, control, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm({
+  const { register, control, handleSubmit, reset, formState: { errors } } = useForm({
     resolver: zodResolver(reportSchema),
-    defaultValues: {
-      location: user.address ?? "", description: "", problemStart: "",
-      contactName: user.name, contactPhone: user.phone ?? "",
-    },
+    defaultValues: { title: "", description: "", address: user.address ?? "", areaId: user.areaId ?? "" },
   });
 
-  function handleImage(file: File | undefined) {
-    setImageError("");
-    if (!file) { setImage(null); return; }
-    if (!file.type.startsWith("image/")) { setImageError("Please choose an image file (JPG, PNG or WebP)."); setImage(null); return; }
-    if (file.size > MAX_IMAGE_MB * 1024 * 1024) { setImageError(`The image must be smaller than ${MAX_IMAGE_MB} MB.`); setImage(null); return; }
-    setImage(file);
-  }
-
-  async function onSubmit(values: ReportValues) {
-    if (!user.areaId) {
-      toast.error("Please choose your service area in your profile first.");
-      return;
-    }
-    try {
-      const report = await createOutageReport({
-        ...values,
-        customerId: user.id,
-        areaId: user.areaId,
-        problemStart: new Date(values.problemStart).toISOString(),
-        imageName: image?.name, // demo: only the file name is kept, nothing is uploaded
-      });
-      toast.success(`Report ${report.id} submitted.`);
-      setSubmitted(report);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not submit your report.");
-    }
-  }
-
-  function another() {
-    reset();
-    setImage(null);
-    setSubmitted(null);
-  }
+  // POST /outage-reports. Free; the backend allows one open report per area.
+  const submit = useMutation({
+    mutationFn: (v: ReportValues) =>
+      api<OutageReport>("/outage-reports", {
+        method: "POST",
+        body: { title: v.title, description: v.description, areaId: v.areaId, ...(v.address ? { address: v.address } : {}) },
+      }),
+    onSuccess: ({ data }) => {
+      queryClient.invalidateQueries({ queryKey: ["outage-reports"] });
+      toast.success("Report submitted.");
+      setSubmitted(data);
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  });
 
   if (submitted) {
     return (
@@ -80,17 +57,31 @@ export function ReportOutageForm() {
             <CheckCircle2 className="mx-auto size-12 text-green-600" />
             <div>
               <p className="text-lg font-semibold">Thank you, your report was received</p>
-              <p className="text-sm text-muted-foreground">Keep this report number to follow the repair.</p>
+              <p className="text-sm text-muted-foreground">You can follow it under My Reports.</p>
             </div>
             <div className="rounded-lg bg-muted p-4">
-              <p className="text-sm text-muted-foreground">Report ID</p>
-              <p className="text-2xl font-bold text-primary">{submitted.id}</p>
-              <div className="mt-2"><StatusBadge {...OUTAGE_STATUS[submitted.status]} /></div>
+              <p className="font-medium">{submitted.title}</p>
+              <p className="text-sm text-muted-foreground">{submitted.area.name}</p>
+              <div className="mt-2">
+                <StatusBadge {...REPORT_STATUS[submitted.status]} />
+              </div>
             </div>
-            <p className="text-sm text-muted-foreground">The control room will review your report and assign a technician. You will get a notification at each step.</p>
+            <p className="text-sm text-muted-foreground">
+              The control room will review your report and send a technician. You get a notification at every step.
+            </p>
             <div className="flex flex-wrap justify-center gap-2">
-              <Link href="/dashboard/my-reports" className={buttonVariants()}>Track my reports</Link>
-              <Button variant="outline" onClick={another}>Report another problem</Button>
+              <Link href="/dashboard/my-reports" className={buttonVariants()}>
+                Track my reports
+              </Link>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  reset();
+                  setSubmitted(null);
+                }}
+              >
+                Report another problem
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -100,42 +91,46 @@ export function ReportOutageForm() {
 
   return (
     <>
-      <PageHeader title="Report an outage" description="Tell us what is wrong with your electricity supply." />
+      <PageHeader title="Report an outage" description="Tell us what is wrong with your electricity supply. Reporting is free." />
       <Card className="max-w-2xl">
         <CardHeader>
           <CardTitle>Problem details</CardTitle>
-          <CardDescription>Fields marked with an asterisk are required in the form. Reports in the demo are saved in this browser only.</CardDescription>
+          <CardDescription>You can have one open report per area at a time.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-            <FormField label="What is the problem? *" htmlFor="r-category" error={errors.category?.message}>
-              <Controller name="category" control={control} render={({ field }) => (
-                <SimpleSelect id="r-category" value={field.value ?? ""} placeholder="Choose the type of problem"
-                  invalid={!!errors.category} options={categoryOptions} onChange={(v) => field.onChange(v as ReportCategory)} />
-              )} />
+          <form onSubmit={handleSubmit((v) => submit.mutate(v))} className="space-y-4" noValidate>
+            <FormField label="Short title" htmlFor="r-title" error={errors.title?.message} hint="For example: No electricity since 8 PM">
+              <Input id="r-title" aria-invalid={!!errors.title} {...register("title")} />
             </FormField>
-            <FormField label="Location *" htmlFor="r-location" error={errors.location?.message} hint="House number, road and a nearby landmark help the technician find you.">
-              <Input id="r-location" aria-invalid={!!errors.location} {...register("location")} />
-            </FormField>
-            <FormField label="Description *" htmlFor="r-desc" error={errors.description?.message}>
+            <FormField label="What happened?" htmlFor="r-desc" error={errors.description?.message}>
               <Textarea id="r-desc" rows={4} aria-invalid={!!errors.description} {...register("description")} />
             </FormField>
-            <FormField label="When did the problem start? *" htmlFor="r-start" error={errors.problemStart?.message}>
-              <Input id="r-start" type="datetime-local" aria-invalid={!!errors.problemStart} {...register("problemStart")} />
+            <FormField label="Area" htmlFor="r-area" error={errors.areaId?.message} hint="Pre-filled with your service area.">
+              <Controller
+                name="areaId"
+                control={control}
+                render={({ field }) => (
+                  <SimpleSelect
+                    id="r-area"
+                    value={field.value}
+                    onChange={field.onChange}
+                    placeholder="Choose the area"
+                    invalid={!!errors.areaId}
+                    options={areas.map((a) => ({ value: a.id, label: `${a.name} (${a.feeder.substation.zone.name})` }))}
+                  />
+                )}
+              />
             </FormField>
-            <FormField label="Photo (optional)" htmlFor="r-image" error={imageError} hint={image ? `Selected: ${image.name} (${(image.size / 1024).toFixed(0)} KB)` : `JPG, PNG or WebP, up to ${MAX_IMAGE_MB} MB. In this demo only the file name is saved.`}>
-              <Input id="r-image" type="file" accept="image/*" onChange={(e) => handleImage(e.target.files?.[0])} />
+            <FormField
+              label="Exact location (optional)"
+              htmlFor="r-address"
+              error={errors.address?.message}
+              hint="House, road and a nearby landmark help the technician find the problem."
+            >
+              <Input id="r-address" aria-invalid={!!errors.address} {...register("address")} />
             </FormField>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <FormField label="Contact name *" htmlFor="r-cname" error={errors.contactName?.message}>
-                <Input id="r-cname" aria-invalid={!!errors.contactName} {...register("contactName")} />
-              </FormField>
-              <FormField label="Contact phone *" htmlFor="r-cphone" error={errors.contactPhone?.message}>
-                <Input id="r-cphone" type="tel" aria-invalid={!!errors.contactPhone} {...register("contactPhone")} />
-              </FormField>
-            </div>
-            <Button type="submit" size="lg" className="h-10 px-4" disabled={isSubmitting}>
-              {isSubmitting ? "Submitting..." : "Submit report"}
+            <Button type="submit" size="lg" className="h-10 px-4" disabled={submit.isPending}>
+              {submit.isPending ? "Submitting..." : "Submit report"}
             </Button>
           </form>
         </CardContent>
