@@ -1,41 +1,30 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { CheckCircle2 } from "lucide-react";
-import { DashboardLink } from "@/components/public/DashboardLink";
+import { Suspense } from "react";
 import { DemoNotice } from "@/components/public/DemoNotice";
-import { buttonVariants } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { PaymentResult } from "@/components/public/PaymentResult";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export const metadata: Metadata = {
-  title: "Payment Successful (Demo)",
-  description: "Demonstration page for a successful payment. No real payment is made in this project.",
+  title: "Payment Successful",
+  description: "Result of your electricity bill payment.",
   robots: { index: false },
-  openGraph: { title: "Payment Successful (Demo) | PowerGrid BD", description: "Demonstration page only.", type: "website" },
 };
 
-export default function PaymentSuccessPage() {
+// SSLCommerz -> backend (verifies the payment) -> redirects here with ?tran_id=...
+export default function PaymentSuccessPage({ searchParams }: PageProps<"/payment/success">) {
   return (
-    <div className="mx-auto max-w-xl space-y-6 px-4 py-16">
-      <Card>
-        <CardContent className="space-y-4 text-center">
-          <CheckCircle2 className="mx-auto size-14 text-green-600" />
-          <div>
-            <h1 className="text-2xl font-semibold text-primary">Payment successful</h1>
-            <p className="mt-1 text-muted-foreground">
-              This is where a customer would land after paying an electricity bill online.
-            </p>
-          </div>
-          <p className="rounded-lg bg-muted p-3 text-sm">
-            <strong>Demonstration page.</strong> No payment was made and no money was charged. Bill payment
-            is not part of this frontend phase and may be added with the backend later.
-          </p>
-          <div className="flex flex-wrap justify-center gap-2">
-            <Link href="/" className={buttonVariants()}>Back to home</Link>
-            <DashboardLink />
-          </div>
-        </CardContent>
-      </Card>
-      <DemoNotice>Outage reports and repairs in this system are free. They never involve a payment.</DemoNotice>
+    <div className="mx-auto max-w-xl space-y-6 px-4 pt-28 pb-16">
+      <Suspense fallback={<Skeleton className="h-80 w-full" />}>
+        <Result searchParams={searchParams} />
+      </Suspense>
+      <DemoNotice>Payments use the SSLCommerz sandbox (test mode). Reporting an outage is always free.</DemoNotice>
     </div>
   );
+}
+
+// Reads ?tran_id from the URL on the server and passes it to the client component
+async function Result({ searchParams }: { searchParams: PageProps<"/payment/success">["searchParams"] }) {
+  const params = await searchParams;
+  const tranId = typeof params.tran_id === "string" ? params.tran_id : "";
+  return <PaymentResult kind="success" tranId={tranId} />;
 }
