@@ -14,13 +14,11 @@ import {
   Wrench,
   Zap,
 } from "lucide-react";
+import { Suspense } from "react";
 import { DemoNotice } from "@/components/public/DemoNotice";
 import { HeroEnergyBackground } from "@/components/public/HeroEnergyBackground";
+import { NetworkStats, NetworkStatsSkeleton } from "@/components/public/NetworkStats";
 import { PowerGridIllustration } from "@/components/public/PowerGridIllustration";
-import { areas } from "@/mock-data/areas";
-import { feeders } from "@/mock-data/feeders";
-import { substations } from "@/mock-data/substations";
-import { zones } from "@/mock-data/zones";
 
 export const metadata: Metadata = {
   title: { absolute: "PowerGrid BD | Load Shedding & Power Management System" },
@@ -50,13 +48,6 @@ const steps = [
   { title: "Power restored", text: "The outage is closed and customers in the area are notified." },
 ];
 
-const stats = [
-  { label: "Distribution zones", value: zones.length, icon: MapPinned },
-  { label: "Substations", value: substations.length, icon: Building2 },
-  { label: "Feeders", value: feeders.length, icon: UtilityPole },
-  { label: "Service areas", value: areas.length, icon: House },
-];
-
 const flow = [
   { icon: Factory, title: "Generation", text: "Power plants produce electricity for the national grid." },
   { icon: MapPinned, title: "Zone", text: "Each distribution zone manages a region of the network." },
@@ -83,7 +74,7 @@ export default function HomePage() {
                 <span className="absolute inline-flex size-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex size-2 rounded-full bg-emerald-400" />
               </span>
-              Demo project · Bangladesh-inspired sample data
+              Academic project · live data from our API
             </p>
             <h1 className="text-4xl font-extrabold leading-tight tracking-tight md:text-5xl">
               Know when the power goes off,{" "}
@@ -130,19 +121,9 @@ export default function HomePage() {
 
         {/* Stats strip, overlapping the hero */}
         <section className="relative z-10 mx-auto -mt-14 max-w-6xl px-4">
-          <div className="grid grid-cols-2 gap-3 rounded-2xl border border-white/10 bg-[#0b1530]/80 p-3 shadow-2xl shadow-electric/10 backdrop-blur-xl md:grid-cols-4">
-            {stats.map((s) => (
-              <div key={s.label} className="flex items-center gap-3 rounded-xl p-3">
-                <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-electric/15 text-sky-300 ring-1 ring-electric/30">
-                  <s.icon className="size-5" />
-                </span>
-                <div>
-                  <p className="text-2xl font-bold text-white">{s.value}</p>
-                  <p className="text-xs text-slate-400">{s.label}</p>
-                </div>
-              </div>
-            ))}
-          </div>
+          <Suspense fallback={<NetworkStatsSkeleton />}>
+            <NetworkStats />
+          </Suspense>
         </section>
 
         {/* How power reaches you */}

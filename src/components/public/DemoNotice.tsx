@@ -13,7 +13,7 @@ export function DemoNotice({ children, className }: { children?: string; classNa
       <Info className="mt-0.5 size-4 shrink-0" />
       <p>
         {children ??
-          "Demonstration data only. This is not a real-time feed from an electricity authority."}
+          "Academic project. The data comes from this project's own API, not from a real electricity authority."}
       </p>
     </div>
   );

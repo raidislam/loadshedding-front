@@ -1,8 +1,13 @@
 // Date and number formatting helpers (kept in one place so every page matches).
 
+// Always show Bangladesh time. Pages rendered on the server (Vercel runs in UTC)
+// and in the browser then show the same time.
+const TIME_ZONE = "Asia/Dhaka";
+
 export function formatDateTime(iso?: string): string {
   if (!iso) return "-";
   return new Date(iso).toLocaleString("en-GB", {
+    timeZone: TIME_ZONE,
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -14,6 +19,7 @@ export function formatDateTime(iso?: string): string {
 export function formatDate(iso?: string): string {
   if (!iso) return "-";
   return new Date(iso).toLocaleDateString("en-GB", {
+    timeZone: TIME_ZONE,
     day: "2-digit",
     month: "short",
     year: "numeric",
@@ -23,6 +29,7 @@ export function formatDate(iso?: string): string {
 export function formatTime(iso?: string): string {
   if (!iso) return "-";
   return new Date(iso).toLocaleTimeString("en-GB", {
+    timeZone: TIME_ZONE,
     hour: "2-digit",
     minute: "2-digit",
   });
