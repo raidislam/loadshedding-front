@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useTechnicianJobs } from "@/components/technician/useTechnicianJobs";
 import { DataTable, type Column } from "@/components/shared/DataTable";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Pagination } from "@/components/shared/Pagination";
@@ -9,89 +8,65 @@ import { SearchFilterBar } from "@/components/shared/SearchFilterBar";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import {
-  OUTAGE_STATUS,
-  OUTAGE_TYPE,
-  PRIORITY,
-  PRIORITY_ORDER,
-} from "@/constants/statuses";
+import { ASSIGNMENT_STATUS } from "@/constants/labels";
+import { useList } from "@/hooks/useApi";
 import { useUrlFilters } from "@/hooks/useUrlFilters";
+import { errorMessage } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import { paginate } from "@/lib/paginate";
-import type { Outage } from "@/types";
+import type { Assignment } from "@/types/api";
+
+// Columns shared by "Assigned Jobs" and "Job History"
+export const jobColumns: Column<Assignment>[] = [
+  {
+    header: "Job",
+    cell: (j) => (
+      <div className="max-w-xs">
+        <Link href={`/technician/jobs/${j.id}`} className="font-medium text-primary hover:underline">
+          {j.report.title}
+        </Link>
+        <p className="truncate text-xs text-muted-foreground">{j.report.address ?? j.report.description}</p>
+      </div>
+    ),
+  },
+  {
+    header: "Location",
+    cell: (j) => (
+      <div>
+        <p>{j.report.area.name}</p>
+        <p className="text-xs text-muted-foreground">{j.report.area.feeder.substation.zone.name}</p>
+      </div>
+    ),
+  },
+  {
+    header: "Customer",
+    cell: (j) => (
+      <div>
+        <p>{j.report.customer.name}</p>
+        <p className="text-xs text-muted-foreground">{j.report.customer.phone ?? ""}</p>
+      </div>
+    ),
+    className: "hidden md:table-cell",
+  },
+  { header: "Status", cell: (j) => <StatusBadge {...ASSIGNMENT_STATUS[j.status]} /> },
+];
 
 export function AssignedJobs() {
-  const { data, loading, error } = useTechnicianJobs();
   const { get, page } = useUrlFilters();
+  // GET /technicians/my-jobs - only this technician's unfinished jobs, oldest first
+  const { data, isLoading, error } = useList<Assignment>("technicians/my-jobs", {
+    page,
+    limit: 10,
+    status: get("status") || undefined,
+  });
 
-  const areaName = (id: string) =>
-    data?.areas.find((a) => a.id === id)?.name ?? "-";
-  const zoneName = (id: string) =>
-    data?.zones.find((z) => z.id === id)?.name ?? "-";
-
-  // This page lists jobs that still need work. Finished jobs are on the History page.
-  const q = get("q").toLowerCase();
-  const rows = (data?.jobs ?? [])
-    .filter((j) => ["ASSIGNED", "IN_PROGRESS"].includes(j.status))
-    .filter(
-      (j) =>
-        !q ||
-        j.id.toLowerCase().includes(q) ||
-        areaName(j.areaId).toLowerCase().includes(q) ||
-        j.reason.toLowerCase().includes(q),
-    )
-    .filter((j) => !get("status") || j.status === get("status"))
-    .filter((j) => !get("priority") || j.priority === get("priority"))
-    .sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]);
-  const paged = paginate(rows, page);
-
-  const columns: Column<Outage>[] = [
-    {
-      header: "Job",
-      cell: (j) => (
-        <Link
-          href={`/technician/jobs/${j.id}`}
-          className="font-medium text-primary hover:underline"
-        >
-          {j.id}
-        </Link>
-      ),
-    },
-    {
-      header: "Type",
-      cell: (j) => <StatusBadge {...OUTAGE_TYPE[j.type]} />,
-      className: "hidden md:table-cell",
-    },
-    {
-      header: "Location",
-      cell: (j) => (
-        <div>
-          <p>{areaName(j.areaId)}</p>
-          <p className="text-xs text-muted-foreground">{zoneName(j.zoneId)}</p>
-        </div>
-      ),
-    },
-    {
-      header: "Priority",
-      cell: (j) => <StatusBadge {...PRIORITY[j.priority]} />,
-    },
-    {
-      header: "Assigned",
-      cell: (j) => formatDateTime(j.assignedAt),
-      className: "hidden lg:table-cell",
-    },
-    {
-      header: "Status",
-      cell: (j) => <StatusBadge {...OUTAGE_STATUS[j.status]} />,
-    },
+  const columns: Column<Assignment>[] = [
+    ...jobColumns,
+    { header: "Assigned", cell: (j) => formatDateTime(j.assignedAt), className: "hidden lg:table-cell" },
     {
       header: "Open",
       className: "text-right",
       cell: (j) => (
-        <Link
-          href={`/technician/jobs/${j.id}`}
-          className={buttonVariants({ variant: "outline", size: "sm" })}
-        >
+        <Link href={`/technician/jobs/${j.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>
           View
         </Link>
       ),
@@ -100,49 +75,31 @@ export function AssignedJobs() {
 
   return (
     <>
-      <PageHeader
-        title="Assigned Jobs"
-        description="Jobs waiting for you, most urgent first."
-      />
+      <PageHeader title="Assigned Jobs" description="Jobs waiting for you, oldest first." />
       <Card className="gap-0 py-0">
         <SearchFilterBar
-          searchPlaceholder="Search job, area or reason"
+          showSearch={false}
           filters={[
             {
               key: "status",
-              label: "All statuses",
-              options: [
-                { value: "ASSIGNED", label: "Assigned" },
-                { value: "IN_PROGRESS", label: "In Progress" },
-              ],
-            },
-            {
-              key: "priority",
-              label: "All priorities",
-              options: Object.entries(PRIORITY).map(([value, p]) => ({
-                value,
-                label: p.label,
-              })),
+              label: "All open jobs",
+              options: (["ASSIGNED", "ACCEPTED", "IN_PROGRESS"] as const).map((s) => ({ value: s, label: ASSIGNMENT_STATUS[s].label })),
             },
           ]}
         />
         {error ? (
-          <p className="p-6 text-destructive">{error}</p>
+          <p className="p-6 text-destructive">{errorMessage(error)}</p>
         ) : (
           <DataTable
             columns={columns}
-            rows={paged.items}
+            rows={data?.data ?? []}
             getRowId={(j) => j.id}
-            loading={loading}
+            loading={isLoading}
             emptyTitle="No jobs to show"
-            emptyDescription="You have no open jobs, or none match your filters."
+            emptyDescription="You have no open jobs right now."
           />
         )}
-        <Pagination
-          page={paged.page}
-          totalPages={paged.totalPages}
-          totalItems={paged.totalItems}
-        />
+        <Pagination page={data?.meta?.page ?? 1} totalPages={data?.meta?.totalPages ?? 1} totalItems={data?.meta?.total ?? 0} />
       </Card>
     </>
   );

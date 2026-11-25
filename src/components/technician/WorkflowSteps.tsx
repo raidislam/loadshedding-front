@@ -1,18 +1,17 @@
 import { Check } from "lucide-react";
-import { OUTAGE_STATUS, TECHNICIAN_STEPS } from "@/constants/statuses";
+import { ASSIGNMENT_STATUS } from "@/constants/labels";
 import { cn } from "@/lib/utils";
-import type { OutageStatus } from "@/types";
+import type { AssignmentStatus } from "@/types/api";
 
-// ASSIGNED > IN_PROGRESS > REPAIR_COMPLETED > RESTORED, with the current step highlighted.
-export function WorkflowSteps({ status }: { status: OutageStatus }) {
-  const current = TECHNICIAN_STEPS.indexOf(status);
+// The job workflow, same as the backend: ASSIGNED -> ACCEPTED -> IN_PROGRESS -> COMPLETED
+const STEPS: AssignmentStatus[] = ["ASSIGNED", "ACCEPTED", "IN_PROGRESS", "COMPLETED"];
+
+export function WorkflowSteps({ status }: { status: AssignmentStatus }) {
+  const current = STEPS.indexOf(status);
   return (
-    <ol
-      className="grid grid-cols-2 gap-3 sm:grid-cols-4"
-      aria-label="Job workflow"
-    >
-      {TECHNICIAN_STEPS.map((step, i) => {
-        const done = i < current || (i === current && status === "RESTORED");
+    <ol className="grid grid-cols-2 gap-3 sm:grid-cols-4" aria-label="Job workflow">
+      {STEPS.map((step, i) => {
+        const done = i < current || status === "COMPLETED";
         const isCurrent = i === current && !done;
         return (
           <li
@@ -28,16 +27,12 @@ export function WorkflowSteps({ status }: { status: OutageStatus }) {
             <span
               className={cn(
                 "flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
-                done
-                  ? "bg-green-500 text-white"
-                  : isCurrent
-                    ? "bg-white/20"
-                    : "border",
+                done ? "bg-green-500 text-white" : isCurrent ? "bg-white/20" : "border",
               )}
             >
               {done ? <Check className="size-3.5" /> : i + 1}
             </span>
-            <span className="font-medium">{OUTAGE_STATUS[step].label}</span>
+            <span className="font-medium">{ASSIGNMENT_STATUS[step].label}</span>
           </li>
         );
       })}

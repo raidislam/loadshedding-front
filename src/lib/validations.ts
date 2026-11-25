@@ -231,17 +231,24 @@ export type ReportValues = z.infer<typeof reportSchema>;
 
 // ---------- Technician ----------
 
-export const repairNoteSchema = z.object({
-  note: z.string().trim().min(5, "Please write a note of at least 5 characters."),
-  progress: z
-    .number({ error: "Enter the progress as a number." })
-    .int("Use a whole number.")
-    .min(0, "Progress cannot be below 0%.")
-    .max(99, "Use 99% or less. Submit the completion form to finish the job."),
+// Admin: POST /assignments and PATCH /assignments/:id/technician
+export const assignSchema = z.object({
+  technicianId: z.string().min(1, "Please choose a technician."),
+  note: z.string().trim().max(500, "Note cannot be longer than 500 characters."),
 });
-export type RepairNoteValues = z.infer<typeof repairNoteSchema>;
+export type AssignValues = z.infer<typeof assignSchema>;
 
-export const completionSchema = z.object({
-  summary: z.string().trim().min(10, "Please summarise the repair in at least 10 characters."),
+// Technician: POST /assignments/:id/repair-report (completes the job)
+export const repairReportSchema = z.object({
+  workDescription: z
+    .string()
+    .trim()
+    .min(10, "Describe the work in at least 10 characters.")
+    .max(2000, "Description is too long."),
+  partsUsed: z.string().trim().max(500, "Parts list is too long."),
+  // optional <input type="datetime-local">; empty = now
+  restoredAt: z
+    .string()
+    .refine((v) => v === "" || new Date(v).getTime() <= Date.now(), "The restoration time can't be in the future."),
 });
-export type CompletionValues = z.infer<typeof completionSchema>;
+export type RepairReportValues = z.infer<typeof repairReportSchema>;

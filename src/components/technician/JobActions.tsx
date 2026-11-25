@@ -1,418 +1,155 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { FormField } from "@/components/shared/FormField";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { api, errorMessage } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import {
-  completionSchema,
-  repairNoteSchema,
-  type CompletionValues,
-  type RepairNoteValues,
-} from "@/lib/validations";
-import { acceptAssignment, updateRepairProgress } from "@/services/technicians";
-import type { Outage } from "@/types";
+import { repairReportSchema, type RepairReportValues } from "@/lib/validations";
+import type { Assignment } from "@/types/api";
 
-const MAX_FILES = 5;
-const MAX_MB = 5;
-
-interface Props {
-  job: Outage;
-  technicianName: string;
-  onChanged: () => void; // reload the job after any change
+// Refresh every list and detail that shows jobs, reports or outages
+function useRefreshJobs() {
+  const queryClient = useQueryClient();
+  return () => {
+    for (const key of ["assignments", "technicians", "outage-reports", "outages", "notifications"]) {
+      queryClient.invalidateQueries({ queryKey: [key] });
+    }
+  };
 }
 
-// All technician actions for one job. What is shown depends on the job status:
-// ASSIGNED -> accept, then start repair
-// IN_PROGRESS -> add notes, upload evidence, submit completion
-export function JobActions({ job, technicianName, onChanged }: Props) {
-  if (job.status === "RESTORED") {
+// What the technician can do depends on the job status:
+// ASSIGNED -> Accept,  ACCEPTED -> Start work,  IN_PROGRESS -> Submit repair report,  COMPLETED -> done
+export function JobActions({ job }: { job: Assignment }) {
+  if (job.status === "COMPLETED") {
+    const repair = job.repairRecords[0];
     return (
       <Card>
-        <CardContent className="text-sm">
-          <p className="font-medium text-green-800">
-            This job is finished and power has been restored.
-          </p>
-          <p className="text-muted-foreground">
-            Restored on {formatDateTime(job.restoredAt)}.
-          </p>
+        <CardContent className="space-y-1 text-sm">
+          <p className="font-medium text-green-800">This job is finished and power has been restored.</p>
+          <p className="text-muted-foreground">Completed on {formatDateTime(job.completedAt ?? undefined)}.</p>
+          {repair && (
+            <p>
+              <span className="text-muted-foreground">Work done:</span> {repair.workDescription}
+              {repair.partsUsed ? ` (parts: ${repair.partsUsed})` : ""}
+            </p>
+          )}
         </CardContent>
       </Card>
     );
   }
-  if (job.status === "REPAIR_COMPLETED") {
-    return (
-      <Card>
-        <CardContent className="text-sm">
-          <p className="font-medium">
-            Repair submitted. Waiting for the administrator to confirm
-            restoration.
-          </p>
-          <p className="text-muted-foreground">
-            You do not need to do anything else for this job.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-  if (job.status === "ASSIGNED") {
-    return (
-      <StartSection
-        job={job}
-        technicianName={technicianName}
-        onChanged={onChanged}
-      />
-    );
-  }
-  if (job.status === "IN_PROGRESS") {
-    return (
-      <div className="space-y-6">
-        <NoteSection
-          job={job}
-          technicianName={technicianName}
-          onChanged={onChanged}
-        />
-        <EvidenceSection
-          job={job}
-          technicianName={technicianName}
-          onChanged={onChanged}
-        />
-        <CompletionSection
-          job={job}
-          technicianName={technicianName}
-          onChanged={onChanged}
-        />
-      </div>
-    );
-  }
-  return null;
+  if (job.status === "IN_PROGRESS") return <RepairReportForm job={job} />;
+  return <StatusStep job={job} />;
 }
 
-// ---------- Accept + start ----------
-function StartSection({ job, technicianName, onChanged }: Props) {
-  const [busy, setBusy] = useState(false);
+// ASSIGNED -> ACCEPTED, ACCEPTED -> IN_PROGRESS (PATCH /assignments/:id/status)
+function StatusStep({ job }: { job: Assignment }) {
+  const refresh = useRefreshJobs();
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const accepted = !!job.acceptedAt;
+  const next = job.status === "ASSIGNED" ? "ACCEPTED" : "IN_PROGRESS";
 
-  async function accept() {
-    setBusy(true);
-    try {
-      await acceptAssignment(job.id, technicianName);
-      toast.success("Assignment accepted.");
-      onChanged();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not accept the job.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function start() {
-    setBusy(true);
-    try {
-      await updateRepairProgress(job.id, {
-        author: technicianName,
-        status: "IN_PROGRESS",
-      });
-      toast.success("Repair started. The customer has been notified.");
-      onChanged();
-    } catch (e) {
-      toast.error(
-        e instanceof Error ? e.message : "Could not start the repair.",
-      );
-    } finally {
-      setBusy(false);
-      setConfirmOpen(false);
-    }
-  }
+  const change = useMutation({
+    mutationFn: () => api(`/assignments/${job.id}/status`, { method: "PATCH", body: { status: next } }),
+    onSuccess: () => {
+      toast.success(next === "ACCEPTED" ? "Job accepted. The customer was told you are coming." : "Work started. The customer was notified.");
+      refresh();
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+    onSettled: () => setConfirmOpen(false),
+  });
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{accepted ? "Ready to start" : "New assignment"}</CardTitle>
+        <CardTitle>{job.status === "ASSIGNED" ? "New job" : "Ready to start"}</CardTitle>
         <CardDescription>
-          {accepted
-            ? `You accepted this job on ${formatDateTime(job.acceptedAt)}. Start the repair when you are at the site.`
-            : "Accept this job to confirm you will attend it."}
+          {job.status === "ASSIGNED"
+            ? "Accept the job to let the customer and the control room know you will handle it."
+            : "Start the work when you reach the location. The customer's report moves to 'Repair in progress'."}
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {accepted ? (
-          <Button onClick={() => setConfirmOpen(true)} disabled={busy}>
-            Start repair
-          </Button>
-        ) : (
-          <Button onClick={accept} disabled={busy}>
-            {busy ? "Accepting..." : "Accept assignment"}
-          </Button>
-        )}
+        <Button onClick={() => setConfirmOpen(true)}>{job.status === "ASSIGNED" ? "Accept job" : "Start work"}</Button>
       </CardContent>
       <ConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
-        loading={busy}
-        title="Start the repair now?"
-        description="The job will move to In Progress and the customer will be told that work has started."
-        confirmLabel="Start repair"
-        onConfirm={start}
+        loading={change.isPending}
+        title={job.status === "ASSIGNED" ? "Accept this job?" : "Start working on this job now?"}
+        description="The customer gets a notification."
+        confirmLabel={job.status === "ASSIGNED" ? "Accept job" : "Start work"}
+        onConfirm={() => change.mutate()}
       />
     </Card>
   );
 }
 
-// ---------- Repair note + progress ----------
-function NoteSection({ job, technicianName, onChanged }: Props) {
-  const {
-    register,
-    handleSubmit,
-    reset,
-    setError,
-    formState: { errors, isSubmitting },
-  } = useForm<RepairNoteValues>({
-    resolver: zodResolver(repairNoteSchema),
-    defaultValues: { note: "", progress: Math.min(job.progress, 99) },
+// IN_PROGRESS -> COMPLETED (POST /assignments/:id/repair-report).
+// The backend also resolves the report (and the linked outage) and notifies everyone.
+function RepairReportForm({ job }: { job: Assignment }) {
+  const refresh = useRefreshJobs();
+  const [pending, setPending] = useState<RepairReportValues | null>(null);
+  const { register, handleSubmit, formState: { errors } } = useForm({
+    resolver: zodResolver(repairReportSchema),
+    defaultValues: { workDescription: "", partsUsed: "", restoredAt: "" },
   });
 
-  async function onSubmit(values: RepairNoteValues) {
-    if (values.progress < job.progress) {
-      setError("progress", {
-        message: `Progress cannot go back. It is already ${job.progress}%.`,
-      });
-      return;
-    }
-    try {
-      await updateRepairProgress(job.id, {
-        author: technicianName,
-        note: values.note,
-        progress: values.progress,
-      });
-      toast.success("Repair note saved.");
-      reset({ note: "", progress: values.progress });
-      onChanged();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not save the note.");
-    }
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Add repair note</CardTitle>
-        <CardDescription>
-          Describe what you found or did, and update the progress.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form
-          onSubmit={handleSubmit(onSubmit)}
-          className="space-y-4"
-          noValidate
-        >
-          <FormField label="Note" htmlFor="j-note" error={errors.note?.message}>
-            <Textarea
-              id="j-note"
-              rows={3}
-              aria-invalid={!!errors.note}
-              {...register("note")}
-            />
-          </FormField>
-          <FormField
-            label="Repair progress (%)"
-            htmlFor="j-progress"
-            error={errors.progress?.message}
-          >
-            <Input
-              id="j-progress"
-              type="number"
-              className="sm:w-40"
-              aria-invalid={!!errors.progress}
-              {...register("progress", { valueAsNumber: true })}
-            />
-          </FormField>
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Saving..." : "Save note"}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ---------- Evidence ----------
-function EvidenceSection({ job, technicianName, onChanged }: Props) {
-  const [files, setFiles] = useState<File[]>([]);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [inputKey, setInputKey] = useState(0);
-
-  function choose(list: FileList | null) {
-    setError("");
-    const chosen = Array.from(list ?? []);
-    if (chosen.length > MAX_FILES) {
-      setError(`Choose at most ${MAX_FILES} photos at a time.`);
-      setFiles([]);
-      return;
-    }
-    if (chosen.some((f) => !f.type.startsWith("image/"))) {
-      setError("Only image files are allowed.");
-      setFiles([]);
-      return;
-    }
-    if (chosen.some((f) => f.size > MAX_MB * 1024 * 1024)) {
-      setError(`Each photo must be smaller than ${MAX_MB} MB.`);
-      setFiles([]);
-      return;
-    }
-    setFiles(chosen);
-  }
-
-  async function upload() {
-    setBusy(true);
-    try {
-      // Demo: only the file names are saved. Nothing is uploaded anywhere.
-      await updateRepairProgress(job.id, {
-        author: technicianName,
-        evidenceFiles: files.map((f) => f.name),
-      });
-      toast.success(
-        `${files.length} photo${files.length === 1 ? "" : "s"} added as evidence.`,
-      );
-      setFiles([]);
-      setInputKey((k) => k + 1);
-      onChanged();
-    } catch (e) {
-      toast.error(
-        e instanceof Error ? e.message : "Could not add the evidence.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Upload repair evidence</CardTitle>
-        <CardDescription>
-          Photos of the fault or the finished repair. In this demo only the file
-          names are saved.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <FormField
-          label="Photos"
-          htmlFor="j-evidence"
-          error={error}
-          hint={
-            files.length
-              ? `${files.length} selected: ${files.map((f) => f.name).join(", ")}`
-              : `Up to ${MAX_FILES} images, ${MAX_MB} MB each.`
-          }
-        >
-          <Input
-            key={inputKey}
-            id="j-evidence"
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={(e) => choose(e.target.files)}
-          />
-        </FormField>
-        <Button onClick={upload} disabled={files.length === 0 || busy}>
-          {busy ? "Adding..." : "Add evidence"}
-        </Button>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ---------- Completion ----------
-function CompletionSection({ job, technicianName, onChanged }: Props) {
-  const [pending, setPending] = useState<CompletionValues | null>(null);
-  const [busy, setBusy] = useState(false);
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<CompletionValues>({
-    resolver: zodResolver(completionSchema),
-    defaultValues: { summary: "" },
+  const submit = useMutation({
+    mutationFn: (v: RepairReportValues) =>
+      api<Assignment>(`/assignments/${job.id}/repair-report`, {
+        method: "POST",
+        body: {
+          workDescription: v.workDescription,
+          ...(v.partsUsed ? { partsUsed: v.partsUsed } : {}),
+          ...(v.restoredAt ? { restoredAt: new Date(v.restoredAt).toISOString() } : {}),
+        },
+      }),
+    onSuccess: ({ data }) => {
+      toast.success(data.outageResolved ? "Job completed. The outage is resolved and the whole area was notified." : "Job completed and power restored.");
+      refresh();
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+    onSettled: () => setPending(null),
   });
 
-  async function confirm() {
-    if (!pending) return;
-    setBusy(true);
-    try {
-      await updateRepairProgress(job.id, {
-        author: technicianName,
-        summary: pending.summary,
-        status: "REPAIR_COMPLETED",
-      });
-      toast.success(
-        "Repair submitted. The administrator will confirm restoration.",
-      );
-      onChanged();
-    } catch (e) {
-      toast.error(
-        e instanceof Error ? e.message : "Could not submit the repair.",
-      );
-    } finally {
-      setBusy(false);
-      setPending(null);
-    }
-  }
-
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Submit completion</CardTitle>
-        <CardDescription>
-          Finished the repair? Write a short summary and submit it for
-          confirmation.
-        </CardDescription>
+        <CardTitle>Submit repair report</CardTitle>
+        <CardDescription>When the power is back, describe what you did. This completes the job.</CardDescription>
       </CardHeader>
       <CardContent>
-        <form
-          onSubmit={handleSubmit((v) => setPending(v))}
-          className="space-y-4"
-          noValidate
-        >
-          <FormField
-            label="Repair summary"
-            htmlFor="j-summary"
-            error={errors.summary?.message}
-          >
-            <Textarea
-              id="j-summary"
-              rows={3}
-              aria-invalid={!!errors.summary}
-              {...register("summary")}
-            />
+        <form onSubmit={handleSubmit((v) => setPending(v))} className="space-y-4" noValidate>
+          <FormField label="Work done" htmlFor="rp-work" error={errors.workDescription?.message}>
+            <Textarea id="rp-work" rows={4} aria-invalid={!!errors.workDescription} {...register("workDescription")} />
           </FormField>
-          <Button type="submit">Mark repair completed</Button>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <FormField label="Parts used (optional)" htmlFor="rp-parts" error={errors.partsUsed?.message}>
+              <Input id="rp-parts" placeholder="e.g. HT fuse x1" aria-invalid={!!errors.partsUsed} {...register("partsUsed")} />
+            </FormField>
+            <FormField label="Power restored at (optional)" htmlFor="rp-time" error={errors.restoredAt?.message} hint="Leave empty for now.">
+              <Input id="rp-time" type="datetime-local" aria-invalid={!!errors.restoredAt} {...register("restoredAt")} />
+            </FormField>
+          </div>
+          <Button type="submit">Submit repair report</Button>
         </form>
       </CardContent>
       <ConfirmDialog
         open={!!pending}
         onOpenChange={(o) => !o && setPending(null)}
-        loading={busy}
-        title="Submit this repair as completed?"
-        confirmLabel="Submit repair"
-        onConfirm={confirm}
-        description="The job will be marked Repair Completed and can no longer be edited. The administrator will confirm that power is restored."
+        loading={submit.isPending}
+        title="Submit the repair report?"
+        description="The job becomes COMPLETED, the customer's report is resolved, and the customer and admins are notified. This can't be undone."
+        confirmLabel="Submit"
+        onConfirm={() => pending && submit.mutate(pending)}
       />
     </Card>
   );

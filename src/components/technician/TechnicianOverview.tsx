@@ -1,36 +1,35 @@
 "use client";
 
-import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import { Briefcase, CheckCircle2, Clock, Hammer } from "lucide-react";
+import Link from "next/link";
 import { useRequiredUser } from "@/components/layout/AuthProvider";
-import { useTechnicianJobs } from "@/components/technician/useTechnicianJobs";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatCard } from "@/components/shared/StatCard";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { CardsSkeleton } from "@/components/shared/TableSkeleton";
 import { buttonVariants } from "@/components/ui/button";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  AVAILABILITY,
-  OUTAGE_STATUS,
-  PRIORITY,
-  PRIORITY_ORDER,
-} from "@/constants/statuses";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ASSIGNMENT_STATUS } from "@/constants/labels";
+import { api } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
+import type { Assignment } from "@/types/api";
+
+// Open jobs (up to 100) + how many jobs are completed
+async function loadOverview() {
+  const [open, history] = await Promise.all([
+    api<Assignment[]>("/technicians/my-jobs", { query: { limit: 100 } }),
+    api<Assignment[]>("/technicians/my-history", { query: { limit: 1 } }),
+  ]);
+  return { open: open.data, completed: history.meta?.total ?? 0 };
+}
 
 export function TechnicianOverview() {
   const user = useRequiredUser();
-  const { data, error } = useTechnicianJobs();
+  const { data, error } = useQuery({ queryKey: ["technicians", "overview"], queryFn: loadOverview });
 
-  if (error) return <p className="text-destructive">{error}</p>;
+  if (error) return <p className="text-destructive">{error.message}</p>;
   if (!data) {
     return (
       <div className="space-y-4">
@@ -40,119 +39,49 @@ export function TechnicianOverview() {
     );
   }
 
-  const { technician, jobs, areas } = data;
-  if (!technician) {
-    return (
-      <Card>
-        <EmptyState
-          title="Technician profile not found"
-          description="Ask an administrator to set up your technician record."
-        />
-      </Card>
-    );
-  }
-
-  const areaName = (id: string) => areas.find((a) => a.id === id)?.name ?? "-";
-  const pending = jobs.filter((j) => j.status === "ASSIGNED");
-  const inProgress = jobs.filter((j) => j.status === "IN_PROGRESS");
-  const completed = jobs.filter((j) =>
-    ["REPAIR_COMPLETED", "RESTORED"].includes(j.status),
-  );
-  const open = [...pending, ...inProgress].sort(
-    (a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority],
-  );
+  const count = (status: Assignment["status"]) => data.open.filter((j) => j.status === status).length;
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title={`Hello, ${user.name.split(" ")[0]}`}
-        description={`${technician.specialty} · Employee ${technician.employeeId}`}
-        actions={
-          <>
-            <StatusBadge {...AVAILABILITY[technician.availability]} />
-            <Link
-              href="/technician/profile"
-              className={buttonVariants({ variant: "outline", size: "sm" })}
-            >
-              Change availability
-            </Link>
-          </>
-        }
-      />
+      <PageHeader title={`Hello, ${user.name.split(" ")[0]}`} description="Your repair jobs at a glance." />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Assigned jobs"
-          value={pending.length + inProgress.length}
-          icon={Briefcase}
-          hint="Pending plus in progress"
-        />
-        <StatCard
-          title="Pending jobs"
-          value={pending.length}
-          icon={Clock}
-          tone="warning"
-          hint="Waiting to be started"
-        />
-        <StatCard
-          title="In progress"
-          value={inProgress.length}
-          icon={Hammer}
-          tone="danger"
-        />
-        <StatCard
-          title="Completed jobs"
-          value={completed.length}
-          icon={CheckCircle2}
-          tone="success"
-        />
+        <StatCard title="New jobs" value={count("ASSIGNED")} icon={Briefcase} hint="Waiting for you to accept" />
+        <StatCard title="Accepted" value={count("ACCEPTED")} icon={Clock} tone="warning" hint="Not started yet" />
+        <StatCard title="In progress" value={count("IN_PROGRESS")} icon={Hammer} tone="danger" />
+        <StatCard title="Completed" value={data.completed} icon={CheckCircle2} tone="success" />
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle>Today&apos;s workload</CardTitle>
           <CardDescription>
-            {open.length === 0
-              ? "No open jobs right now."
-              : `${open.length} open job${open.length === 1 ? "" : "s"}, most urgent first.`}
+            {data.open.length === 0 ? "No open jobs right now." : `${data.open.length} open job${data.open.length === 1 ? "" : "s"}, oldest first.`}
           </CardDescription>
           <CardAction>
-            <Link
-              href="/technician/jobs"
-              className={buttonVariants({ variant: "ghost", size: "sm" })}
-            >
+            <Link href="/technician/jobs" className={buttonVariants({ variant: "ghost", size: "sm" })}>
               All jobs
             </Link>
           </CardAction>
         </CardHeader>
         <CardContent>
-          {open.length === 0 ? (
-            <EmptyState
-              title="You are all caught up"
-              description="New assignments from the control room will appear here."
-            />
+          {data.open.length === 0 ? (
+            <EmptyState title="You are all caught up" description="New assignments from the control room will appear here." />
           ) : (
             <ul className="divide-y">
-              {open.map((job) => (
-                <li
-                  key={job.id}
-                  className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between"
-                >
+              {data.open.slice(0, 5).map((job) => (
+                <li key={job.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
                     <p className="font-medium">
-                      {job.id} · {areaName(job.areaId)}
+                      {job.report.title} · {job.report.area.name}
                     </p>
                     <p className="truncate text-sm text-muted-foreground">
-                      {job.reason} · assigned {formatDateTime(job.assignedAt)}
+                      {job.report.customer.name} · assigned {formatDateTime(job.assignedAt)}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <StatusBadge {...PRIORITY[job.priority]} />
-                    <StatusBadge {...OUTAGE_STATUS[job.status]} />
-                    <Link
-                      href={`/technician/jobs/${job.id}`}
-                      className={buttonVariants({ size: "sm" })}
-                    >
+                    <StatusBadge {...ASSIGNMENT_STATUS[job.status]} />
+                    <Link href={`/technician/jobs/${job.id}`} className={buttonVariants({ size: "sm" })}>
                       Open
                     </Link>
                   </div>
