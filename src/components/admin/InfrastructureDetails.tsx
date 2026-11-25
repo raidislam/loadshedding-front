@@ -1,8 +1,9 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { Activity, ArrowLeft, Building2, Map, Users, Zap } from "lucide-react";
 import { DataTable, type Column } from "@/components/shared/DataTable";
 import { DetailList, DetailSkeleton } from "@/components/shared/DetailList";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -12,76 +13,97 @@ import { StatCard } from "@/components/shared/StatCard";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  OPERATIONAL_STATUS,
-  OUTAGE_STATUS,
-  OUTAGE_TYPE,
-} from "@/constants/statuses";
-import { useLoad } from "@/hooks/useLoad";
-import { formatDate, formatDateTime, formatNumber } from "@/lib/format";
-import { getAreas } from "@/services/areas";
-import { getFeeders } from "@/services/feeders";
-import { getOutages } from "@/services/outages";
-import { getSubstations } from "@/services/substations";
-import { getZones } from "@/services/zones";
-import { Activity, Building2, Map, Users } from "lucide-react";
-import type { Area, Feeder, Outage, Substation } from "@/types";
+import { OUTAGE_STATUS, OUTAGE_TYPE } from "@/constants/labels";
+import { useDetail } from "@/hooks/useApi";
+import { api, ApiError, errorMessage } from "@/lib/api";
+import { formatDate, formatDateTime } from "@/lib/format";
+import type { Area, Feeder, Outage, Substation, Zone } from "@/types/api";
 
-// All four detail pages need the whole network, so they share one loader.
-async function loadNetwork() {
-  const [zones, substations, feeders, areas, outages] = await Promise.all([
-    getZones(),
-    getSubstations(),
-    getFeeders(),
-    getAreas(),
-    getOutages(),
-  ]);
-  return { zones, substations, feeders, areas, outages };
-}
+const linkClass = "font-medium text-primary hover:underline";
 
 function BackLink({ href, label }: { href: string; label: string }) {
   return (
-    <Link
-      href={href}
-      className={buttonVariants({ variant: "outline", size: "sm" })}
-    >
+    <Link href={href} className={buttonVariants({ variant: "outline", size: "sm" })}>
       <ArrowLeft /> {label}
     </Link>
   );
 }
 
-function NotFound({ what, href }: { what: string; href: string }) {
+// Loading / 404 / other error, shared by all four pages
+function DetailState({ error, what, href }: { error: unknown; what: string; href: string }) {
+  if (error instanceof ApiError && error.status === 404) {
+    return (
+      <Card>
+        <EmptyState
+          title={`${what} not found`}
+          description="It may have been deleted."
+          action={<BackLink href={href} label="Back to list" />}
+        />
+      </Card>
+    );
+  }
+  return <p className="text-destructive">{errorMessage(error)}</p>;
+}
+
+// "How many?" using meta.total of a list with limit=1
+function useCount(resource: string, query: Record<string, string>) {
+  return useQuery({
+    queryKey: [resource, "count", query],
+    queryFn: async () => (await api<unknown[]>(`/${resource}`, { query: { ...query, limit: 1 } })).meta?.total ?? 0,
+  });
+}
+
+// Latest outages under a zone / substation / feeder / area
+function RecentOutages({ filter }: { filter: Record<string, string> }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["outages", "list", { ...filter, limit: 5 }],
+    queryFn: async () => (await api<Outage[]>("/outages", { query: { ...filter, limit: 5, sortBy: "startTime", sortOrder: "desc" } })).data,
+  });
+
+  const columns: Column<Outage>[] = [
+    {
+      header: "Outage",
+      cell: (o) => (
+        <Link href={`/admin/outages/${o.id}`} className={linkClass}>
+          {o.title}
+        </Link>
+      ),
+    },
+    { header: "Area", cell: (o) => o.area.name },
+    { header: "Type", cell: (o) => <StatusBadge {...OUTAGE_TYPE[o.type]} /> },
+    { header: "Status", cell: (o) => <StatusBadge {...OUTAGE_STATUS[o.status]} /> },
+    { header: "Start", cell: (o) => formatDateTime(o.startTime), className: "hidden md:table-cell" },
+  ];
+
   return (
-    <Card>
-      <EmptyState
-        title={`${what} not found`}
-        description="It may have been deleted."
-        action={<BackLink href={href} label="Back to list" />}
+    <Card className="gap-0 py-0">
+      <CardHeader className="border-b py-4">
+        <CardTitle>Latest outages</CardTitle>
+      </CardHeader>
+      <DataTable
+        columns={columns}
+        rows={data ?? []}
+        getRowId={(o) => o.id}
+        loading={isLoading}
+        emptyTitle="No outages recorded"
+        emptyDescription="Outages in this part of the network will appear here."
       />
     </Card>
   );
 }
 
-const linkClass = "font-medium text-primary hover:underline";
-
 // ---------------- Zone ----------------
 export function ZoneDetail() {
   const { id } = useParams<{ id: string }>();
-  const { data, loading, error } = useLoad(loadNetwork);
+  const { data: zone, isLoading, error } = useDetail<Zone>("zones", id);
+  const feeders = useCount("feeders", { zoneId: id });
+  const areas = useCount("areas", { zoneId: id });
 
-  if (loading) return <DetailSkeleton />;
-  if (error || !data) return <p className="text-destructive">{error}</p>;
-  const zone = data.zones.find((z) => z.id === id);
-  if (!zone) return <NotFound what="Zone" href="/admin/zones" />;
+  if (isLoading) return <DetailSkeleton />;
+  if (error || !zone) return <DetailState error={error} what="Zone" href="/admin/zones" />;
 
-  const substations = data.substations.filter((s) => s.zoneId === zone.id);
-  const feeders = data.feeders.filter((f) =>
-    substations.some((s) => s.id === f.substationId),
-  );
-  const areas = data.areas.filter((a) => a.zoneId === zone.id);
-  const customers = areas.reduce((sum, a) => sum + a.customerCount, 0);
-
-  const columns: Column<Substation>[] = [
+  const substations = zone.substations ?? [];
+  const columns: Column<(typeof substations)[number]>[] = [
     {
       header: "Substation",
       cell: (s) => (
@@ -91,78 +113,34 @@ export function ZoneDetail() {
       ),
     },
     { header: "Code", cell: (s) => s.code },
-    { header: "Capacity", cell: (s) => `${s.capacityMVA} MVA` },
-    {
-      header: "Feeders",
-      cell: (s) => feeders.filter((f) => f.substationId === s.id).length,
-    },
-    {
-      header: "Status",
-      cell: (s) => <StatusBadge {...OPERATIONAL_STATUS[s.status]} />,
-    },
+    { header: "Capacity", cell: (s) => (s.capacityMW ? `${s.capacityMW} MW` : "-") },
   ];
 
   return (
     <div className="space-y-6">
       <div>
         <HierarchyBreadcrumb zone={zone} current="zone" />
-        <PageHeader
-          title={zone.name}
-          description={zone.description}
-          actions={<BackLink href="/admin/zones" label="All zones" />}
-        />
+        <PageHeader title={zone.name} description={zone.description ?? undefined} actions={<BackLink href="/admin/zones" label="All zones" />} />
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard
-          title="Substations"
-          value={substations.length}
-          icon={Building2}
-        />
-        <StatCard
-          title="Feeders"
-          value={feeders.length}
-          icon={Activity}
-          tone="warning"
-        />
-        <StatCard
-          title="Areas"
-          value={areas.length}
-          icon={Map}
-          tone="success"
-        />
-        <StatCard
-          title="Customers"
-          value={formatNumber(customers)}
-          icon={Users}
-        />
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard title="Substations" value={substations.length} icon={Building2} />
+        <StatCard title="Feeders" value={feeders.data ?? "-"} icon={Zap} tone="warning" />
+        <StatCard title="Areas" value={areas.data ?? "-"} icon={Map} tone="success" />
       </div>
       <DetailList
         title="Zone details"
         items={[
           { label: "Zone code", value: zone.code },
-          {
-            label: "Status",
-            value: <StatusBadge {...OPERATIONAL_STATUS[zone.status]} />,
-          },
           { label: "Created", value: formatDate(zone.createdAt) },
-          {
-            label: "Outages recorded",
-            value: data.outages.filter((o) => o.zoneId === zone.id).length,
-          },
         ]}
       />
       <Card className="gap-0 py-0">
         <CardHeader className="border-b py-4">
           <CardTitle>Substations in this zone</CardTitle>
         </CardHeader>
-        <DataTable
-          columns={columns}
-          rows={substations}
-          getRowId={(s) => s.id}
-          emptyTitle="No substations yet"
-          emptyDescription="Add a substation from the Substations page."
-        />
+        <DataTable columns={columns} rows={substations} getRowId={(s) => s.id} emptyTitle="No substations yet" emptyDescription="Add one from the Substations page." />
       </Card>
+      <RecentOutages filter={{ zoneId: zone.id }} />
     </div>
   );
 }
@@ -170,85 +148,53 @@ export function ZoneDetail() {
 // ---------------- Substation ----------------
 export function SubstationDetail() {
   const { id } = useParams<{ id: string }>();
-  const { data, loading, error } = useLoad(loadNetwork);
+  const { data: substation, isLoading, error } = useDetail<Substation>("substations", id);
+  const areas = useCount("areas", { substationId: id });
 
-  if (loading) return <DetailSkeleton />;
-  if (error || !data) return <p className="text-destructive">{error}</p>;
-  const substation = data.substations.find((s) => s.id === id);
-  if (!substation)
-    return <NotFound what="Substation" href="/admin/substations" />;
+  if (isLoading) return <DetailSkeleton />;
+  if (error || !substation) return <DetailState error={error} what="Substation" href="/admin/substations" />;
 
-  const zone = data.zones.find((z) => z.id === substation.zoneId);
-  const feeders = data.feeders.filter((f) => f.substationId === substation.id);
-  const areaCount = (feederId: string) =>
-    data.areas.filter((a) => a.feederId === feederId).length;
-
-  const columns: Column<Feeder>[] = [
+  const feeders = substation.feeders ?? [];
+  const columns: Column<(typeof feeders)[number]>[] = [
     {
       header: "Feeder",
       cell: (f) => (
         <Link href={`/admin/feeders/${f.id}`} className={linkClass}>
-          {f.code}
+          {f.name}
         </Link>
       ),
     },
-    { header: "Capacity", cell: (f) => `${f.capacityMW} MW` },
-    { header: "Connected areas", cell: (f) => areaCount(f.id) },
-    {
-      header: "Status",
-      cell: (f) => <StatusBadge {...OPERATIONAL_STATUS[f.status]} />,
-    },
+    { header: "Code", cell: (f) => f.code },
+    { header: "Voltage", cell: (f) => (f.voltageKV ? `${f.voltageKV} kV` : "-") },
   ];
 
   return (
     <div className="space-y-6">
       <div>
-        <HierarchyBreadcrumb
-          zone={zone}
-          substation={substation}
-          current="substation"
-        />
-        <PageHeader
-          title={`${substation.name} Substation`}
-          description={`Code ${substation.code}`}
-          actions={
-            <BackLink href="/admin/substations" label="All substations" />
-          }
-        />
+        <HierarchyBreadcrumb zone={substation.zone} substation={substation} current="substation" />
+        <PageHeader title={substation.name} description={`Substation ${substation.code}`} actions={<BackLink href="/admin/substations" label="All substations" />} />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-3">
+        <StatCard title="Feeders" value={feeders.length} icon={Zap} tone="warning" />
+        <StatCard title="Areas served" value={areas.data ?? "-"} icon={Map} tone="success" />
+        <StatCard title="Capacity" value={substation.capacityMW ? `${substation.capacityMW} MW` : "-"} icon={Activity} />
       </div>
       <DetailList
         title="Substation details"
         items={[
-          {
-            label: "Distribution zone",
-            value: zone ? (
-              <Link href={`/admin/zones/${zone.id}`} className={linkClass}>
-                {zone.name}
-              </Link>
-            ) : (
-              "-"
-            ),
-          },
-          { label: "Capacity", value: `${substation.capacityMVA} MVA` },
-          {
-            label: "Status",
-            value: <StatusBadge {...OPERATIONAL_STATUS[substation.status]} />,
-          },
-          { label: "Connected feeders", value: feeders.length },
+          { label: "Code", value: substation.code },
+          { label: "Zone", value: substation.zone ? <Link href={`/admin/zones/${substation.zone.id}`} className={linkClass}>{substation.zone.name}</Link> : "-" },
+          { label: "Address", value: substation.address ?? "-" },
+          { label: "Created", value: formatDate(substation.createdAt) },
         ]}
       />
       <Card className="gap-0 py-0">
         <CardHeader className="border-b py-4">
           <CardTitle>Feeders from this substation</CardTitle>
         </CardHeader>
-        <DataTable
-          columns={columns}
-          rows={feeders}
-          getRowId={(f) => f.id}
-          emptyTitle="No feeders yet"
-          emptyDescription="Add a feeder from the Feeders page."
-        />
+        <DataTable columns={columns} rows={feeders} getRowId={(f) => f.id} emptyTitle="No feeders yet" emptyDescription="Add one from the Feeders page." />
       </Card>
+      <RecentOutages filter={{ substationId: substation.id }} />
     </div>
   );
 }
@@ -256,18 +202,13 @@ export function SubstationDetail() {
 // ---------------- Feeder ----------------
 export function FeederDetail() {
   const { id } = useParams<{ id: string }>();
-  const { data, loading, error } = useLoad(loadNetwork);
+  const { data: feeder, isLoading, error } = useDetail<Feeder>("feeders", id);
 
-  if (loading) return <DetailSkeleton />;
-  if (error || !data) return <p className="text-destructive">{error}</p>;
-  const feeder = data.feeders.find((f) => f.id === id);
-  if (!feeder) return <NotFound what="Feeder" href="/admin/feeders" />;
+  if (isLoading) return <DetailSkeleton />;
+  if (error || !feeder) return <DetailState error={error} what="Feeder" href="/admin/feeders" />;
 
-  const substation = data.substations.find((s) => s.id === feeder.substationId);
-  const zone = data.zones.find((z) => z.id === substation?.zoneId);
-  const areas = data.areas.filter((a) => a.feederId === feeder.id);
-
-  const columns: Column<Area>[] = [
+  const areas = feeder.areas ?? [];
+  const columns: Column<(typeof areas)[number]>[] = [
     {
       header: "Area",
       cell: (a) => (
@@ -277,59 +218,34 @@ export function FeederDetail() {
       ),
     },
     { header: "Code", cell: (a) => a.code },
-    { header: "Customers", cell: (a) => formatNumber(a.customerCount) },
   ];
 
   return (
     <div className="space-y-6">
       <div>
-        <HierarchyBreadcrumb
-          zone={zone}
-          substation={substation}
-          feeder={feeder}
-          current="feeder"
-        />
-        <PageHeader
-          title={`Feeder ${feeder.code}`}
-          actions={<BackLink href="/admin/feeders" label="All feeders" />}
-        />
+        <HierarchyBreadcrumb zone={feeder.substation?.zone} substation={feeder.substation} feeder={feeder} current="feeder" />
+        <PageHeader title={feeder.name} description={`Feeder ${feeder.code}`} actions={<BackLink href="/admin/feeders" label="All feeders" />} />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <StatCard title="Connected areas" value={areas.length} icon={Map} tone="success" />
+        <StatCard title="Voltage" value={feeder.voltageKV ? `${feeder.voltageKV} kV` : "-"} icon={Zap} tone="warning" />
       </div>
       <DetailList
         title="Feeder details"
         items={[
-          {
-            label: "Substation",
-            value: substation ? (
-              <Link
-                href={`/admin/substations/${substation.id}`}
-                className={linkClass}
-              >
-                {substation.name}
-              </Link>
-            ) : (
-              "-"
-            ),
-          },
-          { label: "Distribution zone", value: zone?.name ?? "-" },
-          { label: "Capacity", value: `${feeder.capacityMW} MW` },
-          {
-            label: "Status",
-            value: <StatusBadge {...OPERATIONAL_STATUS[feeder.status]} />,
-          },
+          { label: "Code", value: feeder.code },
+          { label: "Substation", value: feeder.substation ? <Link href={`/admin/substations/${feeder.substation.id}`} className={linkClass}>{feeder.substation.name}</Link> : "-" },
+          { label: "Zone", value: feeder.substation?.zone.name ?? "-" },
+          { label: "Created", value: formatDate(feeder.createdAt) },
         ]}
       />
       <Card className="gap-0 py-0">
         <CardHeader className="border-b py-4">
-          <CardTitle>Areas connected to this feeder</CardTitle>
+          <CardTitle>Areas on this feeder</CardTitle>
         </CardHeader>
-        <DataTable
-          columns={columns}
-          rows={areas}
-          getRowId={(a) => a.id}
-          emptyTitle="No areas connected"
-          emptyDescription="Add an area from the Areas page."
-        />
+        <DataTable columns={columns} rows={areas} getRowId={(a) => a.id} emptyTitle="No areas yet" emptyDescription="Add one from the Areas page." />
       </Card>
+      <RecentOutages filter={{ feederId: feeder.id }} />
     </div>
   );
 }
@@ -337,72 +253,33 @@ export function FeederDetail() {
 // ---------------- Area ----------------
 export function AreaDetail() {
   const { id } = useParams<{ id: string }>();
-  const { data, loading, error } = useLoad(loadNetwork);
+  const { data: area, isLoading, error } = useDetail<Area>("areas", id);
 
-  if (loading) return <DetailSkeleton />;
-  if (error || !data) return <p className="text-destructive">{error}</p>;
-  const area = data.areas.find((a) => a.id === id);
-  if (!area) return <NotFound what="Area" href="/admin/areas" />;
+  if (isLoading) return <DetailSkeleton />;
+  if (error || !area) return <DetailState error={error} what="Area" href="/admin/areas" />;
 
-  const zone = data.zones.find((z) => z.id === area.zoneId);
-  const substation = data.substations.find((s) => s.id === area.substationId);
-  const feeder = data.feeders.find((f) => f.id === area.feederId);
-  const outages = data.outages.filter((o) => o.areaId === area.id);
-
-  const columns: Column<Outage>[] = [
-    {
-      header: "Outage",
-      cell: (o) => (
-        <Link href={`/admin/outages/${o.id}`} className={linkClass}>
-          {o.id}
-        </Link>
-      ),
-    },
-    { header: "Type", cell: (o) => <StatusBadge {...OUTAGE_TYPE[o.type]} /> },
-    {
-      header: "Status",
-      cell: (o) => <StatusBadge {...OUTAGE_STATUS[o.status]} />,
-    },
-    { header: "Start time", cell: (o) => formatDateTime(o.startTime) },
-  ];
-
+  const { feeder } = area;
   return (
     <div className="space-y-6">
       <div>
-        <HierarchyBreadcrumb
-          zone={zone}
-          substation={substation}
-          feeder={feeder}
-          area={area}
-          current="area"
-        />
-        <PageHeader
-          title={area.name}
-          description={`Area code ${area.code}`}
-          actions={<BackLink href="/admin/areas" label="All areas" />}
-        />
+        <HierarchyBreadcrumb zone={feeder.substation.zone} substation={feeder.substation} feeder={feeder} area={area} current="area" />
+        <PageHeader title={area.name} description={`Area ${area.code}`} actions={<BackLink href="/admin/areas" label="All areas" />} />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <StatCard title="Customers" value={area._count?.customers ?? 0} icon={Users} />
+        <StatCard title="Outages recorded" value={area._count?.outages ?? 0} icon={Activity} tone="danger" />
       </div>
       <DetailList
         title="Area details"
         items={[
-          { label: "Customers", value: formatNumber(area.customerCount) },
-          { label: "Distribution zone", value: zone?.name ?? "-" },
-          { label: "Substation", value: substation?.name ?? "-" },
-          { label: "Feeder", value: feeder?.code ?? "-" },
+          { label: "Code", value: area.code },
+          { label: "Feeder", value: <Link href={`/admin/feeders/${feeder.id}`} className={linkClass}>{feeder.name}</Link> },
+          { label: "Substation", value: <Link href={`/admin/substations/${feeder.substation.id}`} className={linkClass}>{feeder.substation.name}</Link> },
+          { label: "Zone", value: <Link href={`/admin/zones/${feeder.substation.zone.id}`} className={linkClass}>{feeder.substation.zone.name}</Link> },
+          { label: "Created", value: formatDate(area.createdAt) },
         ]}
       />
-      <Card className="gap-0 py-0">
-        <CardHeader className="border-b py-4">
-          <CardTitle>Outage history</CardTitle>
-        </CardHeader>
-        <DataTable
-          columns={columns}
-          rows={outages}
-          getRowId={(o) => o.id}
-          emptyTitle="No outages recorded"
-          emptyDescription="This area has had no outages."
-        />
-      </Card>
+      <RecentOutages filter={{ areaId: area.id }} />
     </div>
   );
 }

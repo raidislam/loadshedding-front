@@ -50,51 +50,54 @@ export type RegisterValues = z.infer<typeof registerSchema>;
 
 // ---------- Admin: infrastructure ----------
 
-const statusEnum = z.enum(["OPERATIONAL", "MAINTENANCE", "OFFLINE"], {
-  error: "Please choose a status.",
-});
+// Same rules as the backend: name 2-100 characters; code 2-20 of A-Z, 0-9 or "-", stored in UPPERCASE
+const nameField = (what: string) =>
+  z.string().trim().min(2, `${what} name must be at least 2 characters.`).max(100, `${what} name is too long.`);
+
+const codeField = z
+  .string()
+  .trim()
+  .toUpperCase()
+  .regex(/^[A-Z0-9-]{2,20}$/, "Code must be 2-20 characters: letters, numbers or '-'.");
+
+// Optional positive number typed into a text box ("" = not set)
+const optionalPositive = (label: string) =>
+  z
+    .string()
+    .trim()
+    .refine((v) => v === "" || (Number.isFinite(Number(v)) && Number(v) > 0), `${label} must be a number greater than 0.`);
 
 export const zoneSchema = z.object({
-  name: z.string().trim().min(2, "Zone name is required."),
-  code: z.string().trim().min(2, "Code must be 2 to 5 characters.").max(5, "Code must be 2 to 5 characters."),
-  description: z.string().trim().min(5, "Add a short description."),
-  status: statusEnum,
+  name: nameField("Zone"),
+  code: codeField,
+  description: z.string().trim().max(500, "Description cannot be longer than 500 characters."),
 });
 export type ZoneValues = z.infer<typeof zoneSchema>;
 
 export const substationSchema = z.object({
-  name: z.string().trim().min(2, "Substation name is required."),
-  code: z.string().trim().min(3, "Code must be at least 3 characters."),
+  name: nameField("Substation"),
+  code: codeField,
   zoneId: z.string().min(1, "Please choose a distribution zone."),
-  capacityMVA: z
-    .number({ error: "Enter the capacity as a number." })
-    .positive("Capacity must be more than 0.")
-    .max(1000, "Capacity looks too high."),
-  status: statusEnum,
+  capacityMW: optionalPositive("Capacity"),
+  address: z.string().trim().max(255, "Address is too long."),
 });
 export type SubstationValues = z.infer<typeof substationSchema>;
 
 export const feederSchema = z.object({
-  code: z.string().trim().min(3, "Feeder code must be at least 3 characters."),
+  name: nameField("Feeder"),
+  code: codeField,
+  zoneId: z.string(), // only used to filter the substation dropdown
   substationId: z.string().min(1, "Please choose a substation."),
-  capacityMW: z
-    .number({ error: "Enter the capacity as a number." })
-    .positive("Capacity must be more than 0.")
-    .max(500, "Capacity looks too high."),
-  status: statusEnum,
+  voltageKV: optionalPositive("Voltage"),
 });
 export type FeederValues = z.infer<typeof feederSchema>;
 
 export const areaSchema = z.object({
-  name: z.string().trim().min(2, "Area name is required."),
-  code: z.string().trim().min(2, "Area code is required."),
-  zoneId: z.string().min(1, "Please choose a distribution zone."),
-  substationId: z.string().min(1, "Please choose a substation."),
+  name: nameField("Area"),
+  code: codeField,
+  zoneId: z.string(), // zone and substation only filter the dropdowns below them
+  substationId: z.string(),
   feederId: z.string().min(1, "Please choose a feeder."),
-  customerCount: z
-    .number({ error: "Enter the customer count as a number." })
-    .int("Use a whole number.")
-    .min(0, "Customer count cannot be negative."),
 });
 export type AreaValues = z.infer<typeof areaSchema>;
 

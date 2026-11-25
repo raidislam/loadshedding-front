@@ -104,7 +104,7 @@ export function OutageDetail() {
   return (
     <div className="space-y-6">
       <div>
-        <HierarchyBreadcrumb zone={zone} substation={substation} feeder={feeder} area={area} />
+        <HierarchyBreadcrumb zone={zone} substation={substation} feeder={feeder ? { id: feeder.id, name: feeder.code, code: feeder.code } : undefined} area={area} />
         <PageHeader
           title={`Outage ${outage.id}`}
           description={outage.reason}
