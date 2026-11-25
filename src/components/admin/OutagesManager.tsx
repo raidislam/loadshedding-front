@@ -9,68 +9,105 @@ import { SearchFilterBar } from "@/components/shared/SearchFilterBar";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { OUTAGE_STATUS, OUTAGE_TYPE, PRIORITY } from "@/constants/statuses";
-import { useLoad } from "@/hooks/useLoad";
+import { OUTAGE_STATUS, OUTAGE_TYPE, toOptions } from "@/constants/labels";
+import { useList, useOptions } from "@/hooks/useApi";
 import { useUrlFilters } from "@/hooks/useUrlFilters";
+import { errorMessage } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import { paginate } from "@/lib/paginate";
-import { getAreas } from "@/services/areas";
-import { getOutages } from "@/services/outages";
-import { getTechnicians } from "@/services/technicians";
-import { getZones } from "@/services/zones";
-import type { Outage } from "@/types";
-
-async function loadData() {
-  const [outages, areas, zones, technicians] = await Promise.all([getOutages(), getAreas(), getZones(), getTechnicians()]);
-  return { outages, areas, zones, technicians };
-}
+import type { Outage, Zone } from "@/types/api";
 
 export function OutagesManager() {
-  const { data, loading, error } = useLoad(loadData);
   const { get, page } = useUrlFilters();
+  // The backend search needs at least 2 characters; until then show the normal list
+  const q = get("q").trim().length >= 2 ? get("q").trim() : "";
 
-  const areas = data?.areas ?? [];
-  const zones = data?.zones ?? [];
-  const areaName = (id: string) => areas.find((a) => a.id === id)?.name ?? "-";
-  const zoneName = (id: string) => zones.find((z) => z.id === id)?.name ?? "-";
-  const techName = (id?: string) => (data?.technicians ?? []).find((t) => t.id === id)?.name ?? "-";
+  const { data: zones = [] } = useOptions<Zone>("zones", { sortBy: "name", sortOrder: "asc" });
 
-  // Example URL: /admin/outages?page=1&type=UNEXPECTED&status=ACTIVE
-  const q = get("q").toLowerCase();
-  const rows = (data?.outages ?? [])
-    .filter((o) => !q || o.id.toLowerCase().includes(q) || areaName(o.areaId).toLowerCase().includes(q) || o.reason.toLowerCase().includes(q))
-    .filter((o) => !get("type") || o.type === get("type"))
-    .filter((o) => !get("status") || o.status === get("status"))
-    .filter((o) => !get("zone") || o.zoneId === get("zone"));
-  const paged = paginate(rows, page);
+  // With search text: GET /outages/search?q=...  (title, reason, area / feeder / substation / zone names)
+  // Without:          GET /outages?type=&status=&zoneId=  (filters, newest start first)
+  const { data, isLoading, error } = useList<Outage>(
+    q ? "outages/search" : "outages",
+    q
+      ? { q, page, limit: 10 }
+      : {
+          page,
+          limit: 10,
+          type: get("type") || undefined,
+          status: get("status") || undefined,
+          zoneId: get("zone") || undefined,
+          sortBy: "startTime",
+          sortOrder: "desc",
+        },
+  );
 
   const columns: Column<Outage>[] = [
-    { header: "Outage", cell: (o) => <Link href={`/admin/outages/${o.id}`} className="font-medium text-primary hover:underline">{o.id}</Link> },
+    {
+      header: "Outage",
+      cell: (o) => (
+        <div>
+          <Link href={`/admin/outages/${o.id}`} className="font-medium text-primary hover:underline">
+            {o.title}
+          </Link>
+          <p className="text-xs text-muted-foreground">{o.reason}</p>
+        </div>
+      ),
+    },
     { header: "Type", cell: (o) => <StatusBadge {...OUTAGE_TYPE[o.type]} /> },
-    { header: "Area", cell: (o) => (<div><p>{areaName(o.areaId)}</p><p className="text-xs text-muted-foreground">{zoneName(o.zoneId)}</p></div>) },
+    {
+      header: "Area",
+      cell: (o) => (
+        <div>
+          <p>{o.area.name}</p>
+          <p className="text-xs text-muted-foreground">{o.area.feeder.substation.zone.name}</p>
+        </div>
+      ),
+    },
     { header: "Status", cell: (o) => <StatusBadge {...OUTAGE_STATUS[o.status]} /> },
-    { header: "Priority", cell: (o) => <StatusBadge {...PRIORITY[o.priority]} />, className: "hidden md:table-cell" },
     { header: "Start", cell: (o) => formatDateTime(o.startTime), className: "hidden lg:table-cell" },
-    { header: "Expected restoration", cell: (o) => formatDateTime(o.expectedRestoration), className: "hidden xl:table-cell" },
-    { header: "Technician", cell: (o) => techName(o.technicianId), className: "hidden lg:table-cell" },
+    {
+      header: "Restoration",
+      cell: (o) => (o.actualRestoreTime ? `Restored ${formatDateTime(o.actualRestoreTime)}` : `Expected ${formatDateTime(o.expectedRestoreTime)}`),
+      className: "hidden xl:table-cell",
+    },
   ];
 
   return (
     <>
-      <PageHeader title="Outage Management" description="Scheduled load shedding and unexpected outages in one list."
-        actions={<Link href="/admin/outages/new" className={buttonVariants()}><Plus /> Schedule outage</Link>} />
+      <PageHeader
+        title="Outage Management"
+        description="Scheduled load shedding and unexpected outages in one list."
+        actions={
+          <Link href="/admin/outages/new" className={buttonVariants()}>
+            <Plus /> Create outage
+          </Link>
+        }
+      />
       <Card className="gap-0 py-0">
-        <SearchFilterBar searchPlaceholder="Search ID, area or reason"
-          filters={[
-            { key: "type", label: "All types", options: Object.entries(OUTAGE_TYPE).map(([value, s]) => ({ value, label: s.label })) },
-            { key: "status", label: "All statuses", options: Object.entries(OUTAGE_STATUS).map(([value, s]) => ({ value, label: s.label })) },
-            { key: "zone", label: "All zones", options: zones.map((z) => ({ value: z.id, label: z.name })) },
-          ]} />
-        {error ? <p className="p-6 text-destructive">{error}</p> : (
-          <DataTable columns={columns} rows={paged.items} getRowId={(o) => o.id} loading={loading}
-            emptyTitle="No outages match your filters" emptyDescription="Try clearing a filter, or schedule a new outage." />
+        <SearchFilterBar
+          searchPlaceholder="Search title, reason, area or zone"
+          filters={
+            q
+              ? [] // the search endpoint has no filters, so hide them while searching
+              : [
+                  { key: "type", label: "All types", options: toOptions(OUTAGE_TYPE) },
+                  { key: "status", label: "All statuses", options: toOptions(OUTAGE_STATUS) },
+                  { key: "zone", label: "All zones", options: zones.map((z) => ({ value: z.id, label: z.name })) },
+                ]
+          }
+        />
+        {error ? (
+          <p className="p-6 text-destructive">{errorMessage(error)}</p>
+        ) : (
+          <DataTable
+            columns={columns}
+            rows={data?.data ?? []}
+            getRowId={(o) => o.id}
+            loading={isLoading}
+            emptyTitle={q ? "No outages match your search" : "No outages match your filters"}
+            emptyDescription="Try clearing the search or a filter, or create a new outage."
+          />
         )}
-        <Pagination page={paged.page} totalPages={paged.totalPages} totalItems={paged.totalItems} />
+        <Pagination page={data?.meta?.page ?? 1} totalPages={data?.meta?.totalPages ?? 1} totalItems={data?.meta?.total ?? 0} />
       </Card>
     </>
   );
