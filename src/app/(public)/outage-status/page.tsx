@@ -7,11 +7,13 @@ import { TableSkeleton } from "@/components/shared/TableSkeleton";
 
 export const metadata: Metadata = {
   title: "Outage Status",
-  description: "See active and scheduled power outages by zone, area and date (demonstration data).",
+  description: "See ongoing and scheduled power outages by zone, area, status and date.",
   openGraph: { title: "Outage Status | PowerGrid BD", description: "Active and scheduled outages by zone, area and date.", type: "website" },
 };
 
-export default function OutageStatusPage() {
+// Server Component page. The board below fetches live data on the server;
+// <Suspense> shows a skeleton while it loads (the page header appears immediately).
+export default function OutageStatusPage({ searchParams }: PageProps<"/outage-status">) {
   return (
     <div className="relative overflow-hidden bg-[#020617] text-slate-100">
       {/* Aurora background */}
@@ -46,9 +48,8 @@ export default function OutageStatusPage() {
         {/* `dark` switches the shared table, filters and pagination to dark tokens */}
         <div className="dark space-y-6 text-foreground">
           <DemoNotice className="border-amber-400/30 bg-amber-400/10 text-amber-200" />
-          {/* useSearchParams (filters) needs a Suspense boundary */}
           <Suspense fallback={<TableSkeleton />}>
-            <OutageStatusBoard />
+            <OutageStatusBoard searchParams={searchParams} />
           </Suspense>
         </div>
       </div>
