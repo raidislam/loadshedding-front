@@ -103,23 +103,39 @@ export type AreaValues = z.infer<typeof areaSchema>;
 
 // ---------- Admin: outages ----------
 
-export const scheduledOutageSchema = z
+// Fields shared by "create outage" and "edit outage" (same rules as the backend)
+const outageTextFields = {
+  title: z.string().trim().min(3, "Title must be at least 3 characters.").max(150, "Title is too long."),
+  reason: z.string().trim().min(3, "Please give a reason (at least 3 characters).").max(255, "Reason is too long."),
+  description: z.string().trim().max(1000, "Description cannot be longer than 1000 characters."),
+  // <input type="datetime-local"> values, e.g. "2026-11-25T14:30"
+  startTime: z.string().min(1, "Choose a start date and time."),
+  expectedRestoreTime: z.string().min(1, "Choose the expected restoration time."),
+};
+
+const restoreAfterStart = (d: { startTime: string; expectedRestoreTime: string }) =>
+  !d.startTime || !d.expectedRestoreTime || new Date(d.expectedRestoreTime) > new Date(d.startTime);
+
+export const outageSchema = z
   .object({
-    zoneId: z.string().min(1, "Please choose a distribution zone."),
+    ...outageTextFields,
+    type: z.enum(["SCHEDULED", "UNEXPECTED"], { error: "Please choose the outage type." }),
+    zoneId: z.string().min(1, "Please choose a distribution zone."), // zone/substation/feeder only filter the areas
     substationId: z.string().min(1, "Please choose a substation."),
     feederId: z.string().min(1, "Please choose a feeder."),
     areaId: z.string().min(1, "Please choose the affected area."),
-    startTime: z.string().min(1, "Choose a start date and time."),
-    expectedRestoration: z.string().min(1, "Choose the expected restoration time."),
-    reason: z.string().min(1, "Please choose a reason."),
-    description: z.string().trim().min(10, "Describe the outage in at least 10 characters."),
-    notifyCustomers: z.boolean(),
   })
-  .refine((d) => !d.startTime || !d.expectedRestoration || d.expectedRestoration > d.startTime, {
-    message: "Restoration time must be after the start time.",
-    path: ["expectedRestoration"],
+  .refine(restoreAfterStart, { message: "Restoration time must be after the start time.", path: ["expectedRestoreTime"] })
+  .refine((d) => d.type !== "SCHEDULED" || !d.startTime || new Date(d.startTime) > new Date(), {
+    message: "A scheduled outage must start in the future.",
+    path: ["startTime"],
   });
-export type ScheduledOutageValues = z.infer<typeof scheduledOutageSchema>;
+export type OutageValues = z.infer<typeof outageSchema>;
+
+export const outageEditSchema = z
+  .object(outageTextFields)
+  .refine(restoreAfterStart, { message: "Restoration time must be after the start time.", path: ["expectedRestoreTime"] });
+export type OutageEditValues = z.infer<typeof outageEditSchema>;
 
 export const assignSchema = z.object({
   technicianId: z.string().min(1, "Please choose a technician."),
