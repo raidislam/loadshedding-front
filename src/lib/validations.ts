@@ -190,25 +190,20 @@ export const changePasswordSchema = z
   });
 export type ChangePasswordValues = z.infer<typeof changePasswordSchema>;
 
-export const userSchema = z
-  .object({
-    name: z.string().trim().min(2, "Please enter the full name."),
-    email: z.email("Please enter a valid email address."),
-    phone: phoneSchema,
-    password: z.string().min(6, "Password must be at least 6 characters."),
-    role: z.enum(["ADMIN", "CUSTOMER", "TECHNICIAN"], { error: "Please choose a role." }),
-    areaId: z.string(),
-    zoneId: z.string(),
-  })
-  .superRefine((d, ctx) => {
-    if (d.role === "CUSTOMER" && !d.areaId) {
-      ctx.addIssue({ code: "custom", path: ["areaId"], message: "Please choose the customer's area." });
-    }
-    if (d.role === "TECHNICIAN" && !d.zoneId) {
-      ctx.addIssue({ code: "custom", path: ["zoneId"], message: "Please choose the technician's zone." });
-    }
-  });
-export type UserValues = z.infer<typeof userSchema>;
+// POST /admin/users/technicians (same rules as the backend; phone and address are optional)
+export const technicianSchema = z.object({
+  name: z.string().trim().min(2, "Name must be at least 2 characters.").max(100, "Name is too long."),
+  email: z.email("Please enter a valid email address."),
+  password: passwordSchema,
+  phone: optionalPhoneSchema,
+  address: z
+    .string()
+    .trim()
+    .max(255, "Address is too long.")
+    .refine((v) => v === "" || v.length >= 3, "Address is too short."),
+});
+export type TechnicianValues = z.infer<typeof technicianSchema>;
+
 
 // ---------- Customer ----------
 

@@ -1,92 +1,78 @@
 "use client";
 
-import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { FormDialog } from "@/components/shared/FormDialog";
 import { FormField } from "@/components/shared/FormField";
-import { SimpleSelect } from "@/components/shared/SimpleSelect";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ROLE_LABEL } from "@/constants/navigation";
-import { userSchema, type UserValues } from "@/lib/validations";
-import { createUser } from "@/services/users";
-import type { Area, Role, Zone } from "@/types";
+import { api, errorMessage } from "@/lib/api";
+import { technicianSchema, type TechnicianValues } from "@/lib/validations";
+import type { User } from "@/types/api";
 
 interface Props {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  zones: Zone[];
-  areas: Area[];
-  onSaved: () => void;
 }
 
-export function UserFormDialog({ open, onOpenChange, zones, areas, onSaved }: Props) {
+// Admins can only create TECHNICIAN accounts. Customers register themselves,
+// and an existing user can be made an admin with "Change role".
+export function UserFormDialog({ open, onOpenChange }: Props) {
   return (
-    <FormDialog open={open} onOpenChange={onOpenChange} title="Add user" description="Create an account for an admin, customer or technician.">
-      <UserForm zones={zones} areas={areas} onDone={() => { onOpenChange(false); onSaved(); }} />
+    <FormDialog open={open} onOpenChange={onOpenChange} title="Add technician" description="Create a login for a field technician. Share the password with them.">
+      <TechnicianForm onDone={() => onOpenChange(false)} />
     </FormDialog>
   );
 }
 
-function UserForm({ zones, areas, onDone }: { zones: Zone[]; areas: Area[]; onDone: () => void }) {
-  const { register, control, handleSubmit, formState: { errors, isSubmitting } } = useForm<UserValues>({
-    resolver: zodResolver(userSchema),
-    defaultValues: { name: "", email: "", phone: "", password: "", role: "TECHNICIAN", areaId: "", zoneId: "" },
+function TechnicianForm({ onDone }: { onDone: () => void }) {
+  const queryClient = useQueryClient();
+  const { register, handleSubmit, formState: { errors } } = useForm<TechnicianValues>({
+    resolver: zodResolver(technicianSchema),
+    defaultValues: { name: "", email: "", password: "", phone: "", address: "" },
   });
-  const role = useWatch({ control, name: "role" });
 
-  async function onSubmit(values: UserValues) {
-    try {
-      await createUser(values);
-      toast.success("User created.");
+  // POST /admin/users/technicians - empty optional fields are not sent
+  const create = useMutation({
+    mutationFn: (v: TechnicianValues) =>
+      api<User>("/admin/users/technicians", {
+        method: "POST",
+        body: { name: v.name, email: v.email, password: v.password, phone: v.phone || undefined, address: v.address || undefined },
+      }),
+    onSuccess: (res) => {
+      toast.success(`Technician account created for ${res.data.name}.`);
+      queryClient.invalidateQueries({ queryKey: ["admin/users"] });
       onDone();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not create the user.");
-    }
-  }
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  });
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-      <FormField label="Role" htmlFor="u-role" error={errors.role?.message}>
-        <Controller name="role" control={control} render={({ field }) => (
-          <SimpleSelect id="u-role" value={field.value} onChange={(v) => field.onChange(v as Role)}
-            options={Object.entries(ROLE_LABEL).map(([value, label]) => ({ value, label }))} />
-        )} />
+    <form onSubmit={handleSubmit((v) => create.mutate(v))} className="space-y-4" noValidate>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <FormField label="Full name" htmlFor="t-name" error={errors.name?.message}>
+          <Input id="t-name" aria-invalid={!!errors.name} {...register("name")} />
+        </FormField>
+        <FormField label="Mobile number (optional)" htmlFor="t-phone" error={errors.phone?.message}>
+          <Input id="t-phone" type="tel" placeholder="01811-234567" aria-invalid={!!errors.phone} {...register("phone")} />
+        </FormField>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <FormField label="Email" htmlFor="t-email" error={errors.email?.message}>
+          <Input id="t-email" type="email" aria-invalid={!!errors.email} {...register("email")} />
+        </FormField>
+        <FormField label="Initial password" htmlFor="t-pass" error={errors.password?.message}>
+          <Input id="t-pass" type="text" autoComplete="new-password" aria-invalid={!!errors.password} {...register("password")} />
+        </FormField>
+      </div>
+      <FormField label="Address (optional)" htmlFor="t-address" error={errors.address?.message}>
+        <Input id="t-address" aria-invalid={!!errors.address} {...register("address")} />
       </FormField>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <FormField label="Full name" htmlFor="u-name" error={errors.name?.message}>
-          <Input id="u-name" aria-invalid={!!errors.name} {...register("name")} />
-        </FormField>
-        <FormField label="Mobile number" htmlFor="u-phone" error={errors.phone?.message}>
-          <Input id="u-phone" type="tel" placeholder="01811-234567" aria-invalid={!!errors.phone} {...register("phone")} />
-        </FormField>
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <FormField label="Email" htmlFor="u-email" error={errors.email?.message}>
-          <Input id="u-email" type="email" aria-invalid={!!errors.email} {...register("email")} />
-        </FormField>
-        <FormField label="Temporary password" htmlFor="u-pass" error={errors.password?.message}>
-          <Input id="u-pass" type="text" aria-invalid={!!errors.password} {...register("password")} />
-        </FormField>
-      </div>
-      {role === "TECHNICIAN" && (
-        <FormField label="Assigned zone" htmlFor="u-zone" error={errors.zoneId?.message}>
-          <Controller name="zoneId" control={control} render={({ field }) => (
-            <SimpleSelect id="u-zone" value={field.value} onChange={field.onChange} placeholder="Choose a zone"
-              invalid={!!errors.zoneId} options={zones.map((z) => ({ value: z.id, label: z.name }))} />
-          )} />
-        </FormField>
-      )}
-      {role === "CUSTOMER" && (
-        <FormField label="Service area" htmlFor="u-area" error={errors.areaId?.message}>
-          <Controller name="areaId" control={control} render={({ field }) => (
-            <SimpleSelect id="u-area" value={field.value} onChange={field.onChange} placeholder="Choose an area"
-              invalid={!!errors.areaId} options={areas.map((a) => ({ value: a.id, label: a.name }))} />
-          )} />
-        </FormField>
-      )}
-      <Button type="submit" className="h-9 w-full" disabled={isSubmitting}>{isSubmitting ? "Creating..." : "Create user"}</Button>
+      <Button type="submit" className="h-9 w-full" disabled={create.isPending}>
+        {create.isPending ? "Creating..." : "Create technician"}
+      </Button>
     </form>
   );
 }
