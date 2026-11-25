@@ -1,4 +1,3 @@
-import type { Tone } from "@/constants/statuses";
 import type {
   AssignmentStatus,
   BillStatus,
@@ -12,6 +11,9 @@ import type {
 
 // Label + badge colour for every status the backend returns.
 // Usage: <StatusBadge {...OUTAGE_STATUS[outage.status]} />
+// "Tone" decides the badge colour: green = good, amber = waiting, red = problem.
+export type Tone = "success" | "warning" | "danger" | "info" | "neutral";
+
 interface StatusInfo {
   label: string;
   tone: Tone;

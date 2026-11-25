@@ -1,5 +1,5 @@
 import { Badge } from "@/components/ui/badge";
-import type { Tone } from "@/constants/statuses";
+import type { Tone } from "@/constants/labels";
 import { cn } from "@/lib/utils";
 
 const TONE_CLASS: Record<Tone, string> = {

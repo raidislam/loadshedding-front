@@ -8,7 +8,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { ROLE_HOME } from "@/constants/navigation";
-import type { Role } from "@/types";
+import type { Role } from "@/types/api";
 
 interface DashboardShellProps {
   role: Role; // the only role allowed to see this section

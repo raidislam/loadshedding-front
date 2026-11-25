@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { Zap } from "lucide-react";
 import { NAV_ITEMS, ROLE_LABEL } from "@/constants/navigation";
 import { cn } from "@/lib/utils";
-import type { Role } from "@/types";
+import type { Role } from "@/types/api";
 
 interface SidebarProps {
   role: Role;
@@ -63,7 +63,7 @@ export function Sidebar({ role, onNavigate }: SidebarProps) {
       </nav>
 
       <p className="border-t border-sidebar-border px-5 py-3 text-xs text-sidebar-foreground/60">
-        Demo data only
+        Academic project · live API data
       </p>
     </div>
   );
