@@ -1,208 +1,250 @@
 "use client";
 
-import { useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { useState } from "react";
+import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { DetailList, DetailSkeleton } from "@/components/shared/DetailList";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { FormDialog } from "@/components/shared/FormDialog";
+import { FormField } from "@/components/shared/FormField";
 import { HierarchyBreadcrumb } from "@/components/shared/HierarchyBreadcrumb";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { ProgressTimeline } from "@/components/shared/ProgressTimeline";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { AVAILABILITY, OUTAGE_STATUS, OUTAGE_TYPE, PRIORITY } from "@/constants/statuses";
-import { useLoad } from "@/hooks/useLoad";
-import { formatDateTime } from "@/lib/format";
-import { getAreas } from "@/services/areas";
-import { getFeeders } from "@/services/feeders";
-import { getOutageById, updateOutageStatus } from "@/services/outages";
-import { getReportById } from "@/services/reports";
-import { getSubstations } from "@/services/substations";
-import { getTechnicians } from "@/services/technicians";
-import { getZones } from "@/services/zones";
-import type { OutageStatus } from "@/types";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { OUTAGE_STATUS, OUTAGE_TYPE } from "@/constants/labels";
+import { useDetail } from "@/hooks/useApi";
+import { api, ApiError, errorMessage } from "@/lib/api";
+import { formatDateTime, toDateTimeInput } from "@/lib/format";
+import { outageEditSchema, type OutageEditValues } from "@/lib/validations";
+import type { Outage, OutageStatus } from "@/types/api";
 
-async function loadDetail(id: string) {
-  const outage = await getOutageById(id);
-  const [zones, substations, feeders, areas, technicians, report] = await Promise.all([
-    getZones(), getSubstations(), getFeeders(), getAreas(), getTechnicians(),
-    outage?.reportId ? getReportById(outage.reportId) : Promise.resolve(undefined),
-  ]);
-  return { outage, zones, substations, feeders, areas, technicians, report };
-}
-
-interface PendingAction {
+// Buttons the admin sees for each status (same flow as the backend):
+// SCHEDULED -> ONGOING | CANCELLED,  ONGOING -> RESOLVED.  RESOLVED / CANCELLED are final.
+interface StatusAction {
   status: OutageStatus;
+  label: string;
   title: string;
   description: string;
-  label: string;
   destructive?: boolean;
 }
 
+const STATUS_ACTIONS: Record<OutageStatus, StatusAction[]> = {
+  SCHEDULED: [
+    { status: "ONGOING", label: "Start outage", title: "Start this outage now?", description: "The status becomes ONGOING and customers in the area are told the power is off." },
+    { status: "CANCELLED", label: "Cancel outage", title: "Cancel this outage?", description: "The planned outage will not happen. Customers in the area are told it is cancelled.", destructive: true },
+  ],
+  ONGOING: [
+    { status: "RESOLVED", label: "Mark power restored", title: "Mark power as restored?", description: "The restoration time is recorded now and customers in the area get a 'power restored' notification." },
+  ],
+  RESOLVED: [],
+  CANCELLED: [],
+};
+
 export function OutageDetail() {
   const { id } = useParams<{ id: string }>();
-  // Wrapped in a key-less closure: reload() fetches the same outage again.
-  const [loader] = useState(() => () => loadDetail(id));
-  const { data, loading, error, reload } = useLoad(loader);
-  const [pending, setPending] = useState<PendingAction | null>(null);
-  const [busy, setBusy] = useState(false);
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const { data: outage, isLoading, error } = useDetail<Outage>("outages", id);
+  const [pending, setPending] = useState<StatusAction | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
-  if (loading) return <DetailSkeleton />;
-  if (error || !data) return <p className="text-destructive">{error}</p>;
+  // PATCH /outages/:id { status }
+  const changeStatus = useMutation({
+    mutationFn: (status: OutageStatus) => api<Outage>(`/outages/${id}`, { method: "PATCH", body: { status } }),
+    onSuccess: ({ data }) => {
+      queryClient.invalidateQueries({ queryKey: ["outages"] });
+      toast.success(`Outage is now ${OUTAGE_STATUS[data.status].label.toLowerCase()}. ${data.notifiedCustomers ?? 0} customer(s) notified.`);
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+    onSettled: () => setPending(null),
+  });
 
-  const { outage } = data;
-  if (!outage) {
-    return (
-      <Card>
-        <EmptyState title="Outage not found" description="This outage does not exist."
-          action={<Link href="/admin/outages" className={buttonVariants({ variant: "outline", size: "sm" })}><ArrowLeft /> Back to outages</Link>} />
-      </Card>
-    );
-  }
+  // DELETE /outages/:id (soft delete, not allowed while ONGOING)
+  const remove = useMutation({
+    mutationFn: () => api(`/outages/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["outages"] });
+      toast.success("Outage deleted.");
+      router.replace("/admin/outages");
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+    onSettled: () => setDeleteOpen(false),
+  });
 
-  const zone = data.zones.find((z) => z.id === outage.zoneId);
-  const substation = data.substations.find((s) => s.id === outage.substationId);
-  const feeder = data.feeders.find((f) => f.id === outage.feederId);
-  const area = data.areas.find((a) => a.id === outage.areaId);
-  const technician = data.technicians.find((t) => t.id === outage.technicianId);
-
-  // Which admin actions make sense for the current status
-  const actions: PendingAction[] = [];
-  if (outage.status === "SCHEDULED") {
-    actions.push({ status: "ACTIVE", label: "Start outage", title: "Start this outage now?", description: `Power in ${area?.name} will be marked as off.` });
-  }
-  if (outage.status === "ACTIVE") {
-    actions.push({ status: "COMPLETED", label: "Mark power restored", title: "Mark this outage as completed?", description: "Customers will see the outage as finished." });
-  }
-  if (outage.status === "REPAIR_COMPLETED") {
-    actions.push({ status: "RESTORED", label: "Confirm power restoration", title: "Confirm that power is restored?", description: `Customers in ${area?.name} will be notified that power is back.` });
-  }
-  if (["SCHEDULED", "ACTIVE", "ASSIGNED", "IN_PROGRESS"].includes(outage.status)) {
-    actions.push({ status: "CANCELLED", label: "Cancel outage", destructive: true, title: "Cancel this outage?", description: "The outage will be closed without restoration. This cannot be undone." });
-  }
-
-  async function confirmAction() {
-    if (!pending) return;
-    setBusy(true);
-    try {
-      await updateOutageStatus(outage!.id, pending.status);
-      toast.success(`Status changed to ${OUTAGE_STATUS[pending.status].label}.`);
-      reload();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Could not update the outage.");
-    } finally {
-      setBusy(false);
-      setPending(null);
+  if (isLoading) return <DetailSkeleton />;
+  if (error || !outage) {
+    if (error instanceof ApiError && error.status === 404) {
+      return (
+        <Card>
+          <EmptyState
+            title="Outage not found"
+            description="It may have been deleted."
+            action={
+              <Link href="/admin/outages" className={buttonVariants({ variant: "outline", size: "sm" })}>
+                <ArrowLeft /> Back to list
+              </Link>
+            }
+          />
+        </Card>
+      );
     }
+    return <p className="text-destructive">{errorMessage(error)}</p>;
   }
+
+  const { area } = outage;
+  const isFinished = outage.status === "RESOLVED" || outage.status === "CANCELLED";
 
   return (
     <div className="space-y-6">
       <div>
-        <HierarchyBreadcrumb zone={zone} substation={substation} feeder={feeder ? { id: feeder.id, name: feeder.code, code: feeder.code } : undefined} area={area} />
+        <HierarchyBreadcrumb zone={area.feeder.substation.zone} substation={area.feeder.substation} feeder={area.feeder} area={area} />
         <PageHeader
-          title={`Outage ${outage.id}`}
+          title={outage.title}
           description={outage.reason}
           actions={
             <>
               <StatusBadge {...OUTAGE_TYPE[outage.type]} />
               <StatusBadge {...OUTAGE_STATUS[outage.status]} />
-              <Link href="/admin/outages" className={buttonVariants({ variant: "outline", size: "sm" })}><ArrowLeft /> All outages</Link>
+              <Link href="/admin/outages" className={buttonVariants({ variant: "outline", size: "sm" })}>
+                <ArrowLeft /> All outages
+              </Link>
             </>
           }
         />
       </div>
 
-      {actions.length > 0 && (
-        <Card>
-          <CardContent className="flex flex-wrap items-center gap-2">
-            <p className="mr-2 text-sm font-medium">Actions</p>
-            {actions.map((a) => (
-              <Button key={a.status} variant={a.destructive ? "destructive" : "default"} onClick={() => setPending(a)}>
-                {a.label}
-              </Button>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+      <Card>
+        <CardContent className="flex flex-wrap items-center gap-2">
+          <p className="mr-2 text-sm font-medium">Actions</p>
+          {STATUS_ACTIONS[outage.status].map((a) => (
+            <Button key={a.status} variant={a.destructive ? "destructive" : "default"} onClick={() => setPending(a)}>
+              {a.label}
+            </Button>
+          ))}
+          {!isFinished && (
+            <Button variant="outline" onClick={() => setEditOpen(true)}>
+              <Pencil /> Edit details
+            </Button>
+          )}
+          {outage.status !== "ONGOING" && (
+            <Button variant="outline" className="text-destructive hover:text-destructive" onClick={() => setDeleteOpen(true)}>
+              <Trash2 /> Delete
+            </Button>
+          )}
+          {isFinished && <p className="text-sm text-muted-foreground">This outage is {outage.status.toLowerCase()} and can no longer be changed.</p>}
+        </CardContent>
+      </Card>
 
-      <DetailList title="Outage details" items={[
-        { label: "Priority", value: <StatusBadge {...PRIORITY[outage.priority]} /> },
-        { label: "Affected area", value: area ? `${area.name} (${area.customerCount.toLocaleString("en-US")} customers)` : "-" },
-        { label: "Start time", value: formatDateTime(outage.startTime) },
-        { label: "Expected restoration", value: formatDateTime(outage.expectedRestoration) },
-        { label: "Restored at", value: outage.restoredAt ? formatDateTime(outage.restoredAt) : "Not restored yet" },
-        { label: "Customer report", value: outage.reportId ? <Link href={`/admin/reports?q=${outage.reportId}`} className="text-primary hover:underline">{outage.reportId}</Link> : "No customer report" },
-        { label: "Description", value: <span className="font-normal">{outage.description}</span> },
-      ]} />
+      <DetailList
+        title="Outage details"
+        items={[
+          { label: "Affected area", value: <Link href={`/admin/areas/${area.id}`} className="text-primary hover:underline">{area.name}</Link> },
+          { label: "Feeder / substation", value: `${area.feeder.name} / ${area.feeder.substation.name}` },
+          { label: "Start time", value: formatDateTime(outage.startTime) },
+          { label: "Expected restoration", value: formatDateTime(outage.expectedRestoreTime) },
+          { label: "Restored at", value: outage.actualRestoreTime ? formatDateTime(outage.actualRestoreTime) : "Not restored yet" },
+          { label: "Linked customer reports", value: outage._count?.reports ?? 0 },
+          { label: "Created", value: formatDateTime(outage.createdAt) },
+          { label: "Description", value: <span className="font-normal">{outage.description || "-"}</span> },
+        ]}
+      />
 
-      {outage.type === "UNEXPECTED" && (
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card>
-            <CardHeader><CardTitle>Technician and repair progress</CardTitle></CardHeader>
-            <CardContent className="space-y-4">
-              {technician ? (
-                <dl className="grid gap-3 sm:grid-cols-2">
-                  <div><dt className="text-sm text-muted-foreground">Technician</dt><dd className="font-medium">{technician.name}</dd></div>
-                  <div><dt className="text-sm text-muted-foreground">Phone</dt><dd className="font-medium">{technician.phone}</dd></div>
-                  <div><dt className="text-sm text-muted-foreground">Availability</dt><dd><StatusBadge {...AVAILABILITY[technician.availability]} /></dd></div>
-                  <div><dt className="text-sm text-muted-foreground">Assigned</dt><dd className="font-medium">{formatDateTime(outage.assignedAt)}</dd></div>
-                  <div><dt className="text-sm text-muted-foreground">Accepted</dt><dd className="font-medium">{outage.acceptedAt ? formatDateTime(outage.acceptedAt) : "Not yet"}</dd></div>
-                </dl>
-              ) : (
-                <p className="text-sm text-muted-foreground">No technician assigned yet.</p>
-              )}
-              <div>
-                <div className="mb-1 flex justify-between text-sm"><span>Repair progress</span><span className="font-medium">{outage.progress}%</span></div>
-                <Progress value={outage.progress} />
-              </div>
-              {outage.completionSummary && (
-                <div><p className="text-sm text-muted-foreground">Completion summary</p><p className="text-sm">{outage.completionSummary}</p></div>
-              )}
-              {outage.evidenceFiles.length > 0 && (
-                <div>
-                  <p className="text-sm text-muted-foreground">Evidence files</p>
-                  <ul className="list-disc pl-5 text-sm">{outage.evidenceFiles.map((f) => <li key={f}>{f}</li>)}</ul>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader><CardTitle>Status timeline</CardTitle></CardHeader>
-            <CardContent>
-              {data.report ? <ProgressTimeline entries={data.report.timeline} /> : (
-                <p className="text-sm text-muted-foreground">This outage was created by an admin, so there is no customer report timeline.</p>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {outage.repairNotes.length > 0 && (
-        <Card>
-          <CardHeader><CardTitle>Repair notes</CardTitle></CardHeader>
-          <CardContent>
-            <ul className="divide-y">
-              {outage.repairNotes.map((n) => (
-                <li key={n.id} className="py-3">
-                  <p className="text-sm">{n.note}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{n.author} · {formatDateTime(n.createdAt)} · progress {n.progress}%</p>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
-
-      <ConfirmDialog open={!!pending} onOpenChange={(o) => !o && setPending(null)} loading={busy}
-        destructive={pending?.destructive} title={pending?.title ?? ""} description={pending?.description ?? ""}
-        confirmLabel={pending?.label} onConfirm={confirmAction} />
+      <ConfirmDialog
+        open={!!pending}
+        onOpenChange={(o) => !o && setPending(null)}
+        loading={changeStatus.isPending}
+        destructive={pending?.destructive}
+        title={pending?.title ?? ""}
+        description={pending?.description ?? ""}
+        confirmLabel={pending?.label}
+        onConfirm={() => pending && changeStatus.mutate(pending.status)}
+      />
+      <ConfirmDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        loading={remove.isPending}
+        destructive
+        title="Delete this outage?"
+        confirmLabel="Delete outage"
+        onConfirm={() => remove.mutate()}
+        description={
+          outage.status === "SCHEDULED"
+            ? "It will be hidden everywhere (soft delete), and customers in the area are told it is cancelled."
+            : "It will be hidden everywhere (soft delete)."
+        }
+      />
+      <FormDialog open={editOpen} onOpenChange={setEditOpen} title="Edit outage" description="If the time changes, customers in the area are notified.">
+        <EditOutageForm outage={outage} onDone={() => setEditOpen(false)} />
+      </FormDialog>
     </div>
+  );
+}
+
+function EditOutageForm({ outage, onDone }: { outage: Outage; onDone: () => void }) {
+  const queryClient = useQueryClient();
+  const { register, handleSubmit, formState: { errors } } = useForm({
+    resolver: zodResolver(outageEditSchema),
+    defaultValues: {
+      title: outage.title,
+      reason: outage.reason,
+      description: outage.description ?? "",
+      startTime: toDateTimeInput(outage.startTime),
+      expectedRestoreTime: toDateTimeInput(outage.expectedRestoreTime),
+    },
+  });
+
+  const save = useMutation({
+    mutationFn: (v: OutageEditValues) =>
+      api(`/outages/${outage.id}`, {
+        method: "PATCH",
+        body: {
+          title: v.title,
+          reason: v.reason,
+          ...(v.description ? { description: v.description } : {}),
+          startTime: new Date(v.startTime).toISOString(),
+          expectedRestoreTime: new Date(v.expectedRestoreTime).toISOString(),
+        },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["outages"] });
+      toast.success("Outage updated.");
+      onDone();
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  });
+
+  return (
+    <form onSubmit={handleSubmit((v) => save.mutate(v))} className="space-y-4" noValidate>
+      <FormField label="Title" htmlFor="e-title" error={errors.title?.message}>
+        <Input id="e-title" aria-invalid={!!errors.title} {...register("title")} />
+      </FormField>
+      <FormField label="Reason" htmlFor="e-reason" error={errors.reason?.message}>
+        <Input id="e-reason" aria-invalid={!!errors.reason} {...register("reason")} />
+      </FormField>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <FormField label="Start" htmlFor="e-start" error={errors.startTime?.message}>
+          <Input id="e-start" type="datetime-local" aria-invalid={!!errors.startTime} {...register("startTime")} />
+        </FormField>
+        <FormField label="Expected restoration" htmlFor="e-end" error={errors.expectedRestoreTime?.message}>
+          <Input id="e-end" type="datetime-local" aria-invalid={!!errors.expectedRestoreTime} {...register("expectedRestoreTime")} />
+        </FormField>
+      </div>
+      <FormField label="Description (optional)" htmlFor="e-desc" error={errors.description?.message}>
+        <Textarea id="e-desc" rows={3} aria-invalid={!!errors.description} {...register("description")} />
+      </FormField>
+      <Button type="submit" className="h-9 w-full" disabled={save.isPending}>
+        {save.isPending ? "Saving..." : "Save changes"}
+      </Button>
+    </form>
   );
 }

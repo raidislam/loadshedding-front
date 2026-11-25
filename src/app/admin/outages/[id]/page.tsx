@@ -5,7 +5,7 @@ import { DetailSkeleton } from "@/components/shared/DetailList";
 
 export const metadata: Metadata = { title: "Outage details" };
 
-// Content comes from browser storage, so skip the dev-only instant-navigation check.
+// Data is loaded in the browser with the logged-in admin's session, so skip the dev-only instant-navigation check.
 export const instant = false;
 
 export default function Page() {
