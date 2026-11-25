@@ -160,6 +160,11 @@ export interface OutageReport {
     id: string;
     status: AssignmentStatus;
     technician: PersonRef;
+    // only in the details response (GET /outage-reports/:id)
+    assignedAt?: string;
+    acceptedAt?: string | null;
+    startedAt?: string | null;
+    completedAt?: string | null;
     repairRecords?: RepairRecord[];
   } | null;
 }

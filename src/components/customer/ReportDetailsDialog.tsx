@@ -3,45 +3,78 @@
 import { FormDialog } from "@/components/shared/FormDialog";
 import { ProgressTimeline } from "@/components/shared/ProgressTimeline";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { OUTAGE_STATUS, REPORT_CATEGORY_LABEL } from "@/constants/statuses";
+import { Skeleton } from "@/components/ui/skeleton";
+import { REPORT_STATUS } from "@/constants/labels";
+import { useDetail } from "@/hooks/useApi";
+import { errorMessage } from "@/lib/api";
 import { formatDateTime } from "@/lib/format";
-import type { Area, OutageReport, Technician } from "@/types";
+import type { OutageReport } from "@/types/api";
 
-interface Props {
-  report: OutageReport | null; // null = closed
-  area?: Area;
-  technician?: Technician;
-  onClose: () => void;
+// Full details of one report: GET /outage-reports/:id
+// (only the owner or an admin may open it; anyone else gets 404 from the backend)
+export function ReportDetailsDialog({ reportId, onClose }: { reportId: string | null; onClose: () => void }) {
+  return (
+    <FormDialog open={!!reportId} onOpenChange={(o) => !o && onClose()} title="Report details" description="Follow the progress of the report.">
+      {reportId && <ReportDetails id={reportId} />}
+    </FormDialog>
+  );
 }
 
-export function ReportDetailsDialog({ report, area, technician, onClose }: Props) {
+function ReportDetails({ id }: { id: string }) {
+  const { data: report, isLoading, error } = useDetail<OutageReport>("outage-reports", id);
+
+  if (isLoading) return <Skeleton className="h-64 w-full" />;
+  if (error || !report) return <p className="text-destructive">{errorMessage(error)}</p>;
+
+  const technician = report.assignment?.technician;
+  const repair = report.assignment?.repairRecords?.[0];
+
   return (
-    <FormDialog open={!!report} onOpenChange={(o) => !o && onClose()} title={report ? `Report ${report.id}` : "Report"}
-      description="Follow the progress of your report.">
-      {report && (
-        <div className="space-y-5">
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge {...OUTAGE_STATUS[report.status]} />
-            <span className="text-sm text-muted-foreground">{REPORT_CATEGORY_LABEL[report.category]}</span>
-          </div>
-          <dl className="grid gap-3 text-sm sm:grid-cols-2">
-            <div><dt className="text-muted-foreground">Reported</dt><dd className="font-medium">{formatDateTime(report.createdAt)}</dd></div>
-            <div><dt className="text-muted-foreground">Problem started</dt><dd className="font-medium">{formatDateTime(report.problemStart)}</dd></div>
-            <div><dt className="text-muted-foreground">Location</dt><dd className="font-medium">{report.location}</dd></div>
-            <div><dt className="text-muted-foreground">Area</dt><dd className="font-medium">{area?.name ?? "-"}</dd></div>
-            <div><dt className="text-muted-foreground">Technician</dt>
-              <dd className="font-medium">{technician ? `${technician.name} (${technician.phone})` : "Not assigned yet"}</dd></div>
-            <div><dt className="text-muted-foreground">{report.status === "RESTORED" ? "Power restored" : "Estimated restoration"}</dt>
-              <dd className="font-medium">{report.estimatedRestoration ? formatDateTime(report.estimatedRestoration) : "Will be updated after review"}</dd></div>
-            <div className="sm:col-span-2"><dt className="text-muted-foreground">Your description</dt><dd>{report.description}</dd></div>
-            {report.imageName && <div className="sm:col-span-2"><dt className="text-muted-foreground">Photo</dt><dd className="font-medium">{report.imageName}</dd></div>}
-          </dl>
-          <div>
-            <p className="mb-3 text-sm font-medium">Progress</p>
-            <ProgressTimeline entries={report.timeline} />
-          </div>
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusBadge {...REPORT_STATUS[report.status]} />
+        <span className="font-medium">{report.title}</span>
+      </div>
+      <dl className="grid gap-3 text-sm sm:grid-cols-2">
+        <Item label="Reported" value={formatDateTime(report.createdAt)} />
+        <Item label="Area" value={`${report.area.name}, ${report.area.feeder.substation.zone.name}`} />
+        <Item label="Location" value={report.address ?? "-"} />
+        <Item label="Technician" value={technician ? `${technician.name}${technician.phone ? ` (${technician.phone})` : ""}` : "Not assigned yet"} />
+        {report.outage && <Item label="Linked outage" value={`${report.outage.title}`} />}
+        {report.restoredAt && <Item label="Power restored" value={formatDateTime(report.restoredAt)} />}
+        <div className="sm:col-span-2">
+          <dt className="text-muted-foreground">Description</dt>
+          <dd>{report.description}</dd>
         </div>
-      )}
-    </FormDialog>
+        {report.adminNote && report.status !== "REJECTED" && (
+          <div className="sm:col-span-2">
+            <dt className="text-muted-foreground">Note from the control room</dt>
+            <dd>{report.adminNote}</dd>
+          </div>
+        )}
+        {repair && (
+          <div className="sm:col-span-2">
+            <dt className="text-muted-foreground">Repair work done</dt>
+            <dd>
+              {repair.workDescription}
+              {repair.partsUsed ? ` (parts: ${repair.partsUsed})` : ""}
+            </dd>
+          </div>
+        )}
+      </dl>
+      <div>
+        <p className="mb-3 text-sm font-medium">Progress</p>
+        <ProgressTimeline report={report} />
+      </div>
+    </div>
+  );
+}
+
+function Item({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="font-medium">{value}</dd>
+    </div>
   );
 }
