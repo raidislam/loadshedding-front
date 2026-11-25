@@ -13,10 +13,11 @@ import {
   Settings,
   User,
   Users,
+  Wrench,
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import type { Role } from "@/types";
+import type { Role } from "@/types/api";
 
 export interface NavItem {
   label: string;
@@ -34,6 +35,7 @@ export const NAV_ITEMS: Record<Role, NavItem[]> = {
     { label: "Areas", href: "/admin/areas", icon: Map },
     { label: "Outage Management", href: "/admin/outages", icon: AlertTriangle },
     { label: "Customer Reports", href: "/admin/reports", icon: BarChart3 },
+    { label: "Repair Jobs", href: "/admin/jobs", icon: Wrench },
     { label: "User Management", href: "/admin/users", icon: Users },
     { label: "Notifications", href: "/admin/notifications", icon: Bell },
     { label: "Settings", href: "/admin/settings", icon: Settings },
